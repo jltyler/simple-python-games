@@ -4,15 +4,17 @@ import math
 # Global variables
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
-SHIP_MAX_SPEED = 45.0
+SHIP_MAX_SPEED = 600.0
 SHIP_MAX_SPEED_2 = SHIP_MAX_SPEED ** 2
-SHIP_ACCELERATION = 12.0
-SHIP_FRICTION = 4.0
+SHIP_ACCELERATION = 450.0
+SHIP_FRICTION = 200.0
 SHIP_ROTATION = 215.0
 
 # Other globals
 BATCH = pyglet.graphics.Batch()
-GROUP_FORE = pyglet.graphics.Group(1)
+GROUP_FORE = pyglet.graphics.Group(1) # Using groups is crashing for some reason so this is unused
+
+# Set up ship sprite
 ship_image = pyglet.image.load("ship.png")
 ship_image.anchor_x = ship_image.width // 2
 ship_image.anchor_y = ship_image.height // 2
@@ -65,6 +67,7 @@ class Vector2():
 		self.x *= multi
 		self.y *= multi
 
+# Player controlled ship that moves around
 class Ship(pyglet.sprite.Sprite):
 	"""Player class"""
 	def __init__(self, x, y):
@@ -72,60 +75,63 @@ class Ship(pyglet.sprite.Sprite):
 		self.x = x
 		self.y = y
 		self.speed = Vector2()
-		self.rotation = 0
 		self.accelerating = 0
 		self.rotating = 0
+		self.half_width = self.width//2
+		self.half_height = self.height//2
 
 	def update(self, dt):
 		# Check for acceleration and apply friction if no acceleration
 		if self.accelerating != 0:
-			self.accelerate(dt)
+			self.accelerate(self.accelerating * dt)
 		else:
 			self.speed.subtract(SHIP_FRICTION * dt)
 
+		# check for rotation
 		if self.rotating != 0:
 			self.rotation += SHIP_ROTATION * dt * self.rotating
 
-		self.x += self.speed.x
-		self.y += self.speed.y
+		# Add speed vector to position
+		self.x += self.speed.x * dt
+		self.y += self.speed.y * dt
 
-		# Wrap if over edge
-		if self.x < 0:
-			self.x += SCREEN_WIDTH
-		elif self.x > SCREEN_WIDTH:
-			self.x -= SCREEN_WIDTH
-		if self.y < 0:
-			self.y += SCREEN_HEIGHT
-		elif self.y > SCREEN_HEIGHT:
-			self.y -= SCREEN_HEIGHT
-
-	def turn_left(self):
-		self.rotation += SHIP_ROTATION
-		if self.rotation >= 360:
-			self.rotation -= 360
-
-	def turn_right(self):
-		self.rotation -= SHIP_ROTATION
-		if self.rotation < 0:
-			self.rotation += 360
+		# Wrap if entirely over edge
+		if self.x + self.half_width < 0:
+			self.x += SCREEN_WIDTH + self.width
+		elif self.x > SCREEN_WIDTH + self.half_width:
+			self.x -= SCREEN_WIDTH + self.width
+		if self.y + self.half_height < 0:
+			self.y += SCREEN_HEIGHT + self.height
+		elif self.y > SCREEN_HEIGHT + self.half_height:
+			self.y -= SCREEN_HEIGHT + self.height
 
 	def accelerate(self, multi):
+		# Add acceleration vector to speed vector
 		self.speed.x += math.cos(math.radians(self.rotation)) * (SHIP_ACCELERATION * multi)
+		# Negative Y because of backwards thinking library devs
+		# (pyglet does clockwise rotation whereas normal trig uses counter-clockwise rotation)
+		# Honestly unfathomable why someone would write it different from the norm
 		self.speed.y -= math.sin(math.radians(self.rotation)) * (SHIP_ACCELERATION * multi)
+		# Limit max speed
 		self.speed.clamp(SHIP_MAX_SPEED)
 
-		
+
+# Create player var ahead of time so I can reference it
+PLAYER = None
+# Make pyglet window
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
+# Label to draw FPS and pther debug stuff
 LABEL = pyglet.text.Label('LABELLOL', 'Courier New', 14.0,
 	True, False, (255, 255, 255, 255), 5, SCREEN_HEIGHT - 5,
 	SCREEN_WIDTH - 10, anchor_y = 'top', multiline = True, batch = BATCH)
-PLAYER = None
 
-# Function that
+# Function to change the label text on each draw
 def update_label():
 	LABEL.text = 'FPS: {:.1f}'.format(pyglet.clock.get_fps())
 	LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
 
+# Hooks
+# Left right controls are reversed because stupid pyglet does clockwise rotation
 @WINDOW.event
 def on_key_press(key, mods):
 	if key == pyglet.window.key.UP:
@@ -154,10 +160,6 @@ def on_draw():
 	BATCH.draw()
 	PLAYER.draw()
 	update_label()
-
-
-ASTEROID_LIST = []
-BULLET_LIST = []
 
 def game_setup():
 	global PLAYER

@@ -9,6 +9,11 @@ SHIP_MAX_SPEED_2 = SHIP_MAX_SPEED ** 2
 SHIP_ACCELERATION = 450.0
 SHIP_FRICTION = 200.0
 SHIP_ROTATION = 215.0
+SHIP_FIRE_RATE = 0.35
+
+BULLET_SPEED = 750.0
+BULLET_INHERIT = 1.0
+BULLET_LIST = []
 
 # Other globals
 BATCH = pyglet.graphics.Batch()
@@ -18,6 +23,14 @@ GROUP_FORE = pyglet.graphics.Group(1) # Using groups is crashing for some reason
 ship_image = pyglet.image.load("ship.png")
 ship_image.anchor_x = ship_image.width // 2
 ship_image.anchor_y = ship_image.height // 2
+# Set up bullet sprite
+bullet_image = pyglet.image.load("bullet.png")
+bullet_image.anchor_x = bullet_image.width // 2
+bullet_image.anchor_y = bullet_image.height // 2
+# Set up asteroid sprite
+asteroid_image = pyglet.image.load("asteroid.png")
+asteroid_image.anchor_x = asteroid_image.width // 2
+asteroid_image.anchor_y = asteroid_image.height // 2
 
 # Class definitions
 
@@ -67,18 +80,47 @@ class Vector2():
 		self.x *= multi
 		self.y *= multi
 
+class Bullet(pyglet.sprite.Sprite):
+	"""Bullet fired from ship. Travels in one direction at a constant speed"""
+	def __init__(self, x, y, angle, speed):
+		super().__init__(bullet_image, batch = BATCH)
+		self.x = x
+		self.y = y
+		self.rotation = angle
+		# set speed upon construction
+		self.speed_x = math.cos(math.radians(angle)) * speed
+		self.speed_y = math.sin(math.radians(angle)) * speed
+		self.garbage = False
+
+	def update(self, dt):
+		# update position
+		self.x += self.speed_x * dt
+		# NEGATIVE Y BECAUSE INCONSISTENCY
+		self.y -= self.speed_y * dt
+
+		# check if out of bounds
+		if (self.x < -32 or self.x > SCREEN_WIDTH + 32 or
+			self.y < -32 or self.y > SCREEN_HEIGHT + 32):
+			self.garbage = True
+		
+
 # Player controlled ship that moves around
 class Ship(pyglet.sprite.Sprite):
 	"""Player class"""
 	def __init__(self, x, y):
-		pyglet.sprite.Sprite.__init__(self, ship_image, batch = BATCH)
+		super().__init__(ship_image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.speed = Vector2()
-		self.accelerating = 0
-		self.rotating = 0
+		# Calculate halves just once
 		self.half_width = self.width//2
 		self.half_height = self.height//2
+		# Controls
+		self.accelerating = 0
+		self.rotating = 0
+		self.firing = False
+		# Fire rate (bullet) timer
+		self.btimer = 0
 
 	def update(self, dt):
 		# Check for acceleration and apply friction if no acceleration
@@ -105,6 +147,17 @@ class Ship(pyglet.sprite.Sprite):
 		elif self.y > SCREEN_HEIGHT + self.half_height:
 			self.y -= SCREEN_HEIGHT + self.height
 
+		# Check for firing and refire timer
+		# Check if able to fire
+		if self.btimer <= 0:
+			if self.firing:
+				b = Bullet(self.x, self.y, self.rotation, + BULLET_SPEED) # + (self.speed.get_mag() * BULLET_INHERIT)
+				BULLET_LIST.append(b)
+				self.btimer = SHIP_FIRE_RATE
+		else:
+			self.btimer -= dt
+
+
 	def accelerate(self, multi):
 		# Add acceleration vector to speed vector
 		self.speed.x += math.cos(math.radians(self.rotation)) * (SHIP_ACCELERATION * multi)
@@ -129,6 +182,7 @@ LABEL = pyglet.text.Label('LABELLOL', 'Courier New', 14.0,
 def update_label():
 	LABEL.text = 'FPS: {:.1f}'.format(pyglet.clock.get_fps())
 	LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
+	LABEL.text += '\nTotal Bullets: {}'.format(len(BULLET_LIST))
 
 # Hooks
 # Left right controls are reversed because stupid pyglet does clockwise rotation
@@ -142,6 +196,8 @@ def on_key_press(key, mods):
 		PLAYER.rotating += 1
 	elif key == pyglet.window.key.LEFT:
 		PLAYER.rotating -= 1
+	elif key == pyglet.window.key.Z:
+		PLAYER.firing = True
 
 @WINDOW.event
 def on_key_release(key, mods):
@@ -153,6 +209,8 @@ def on_key_release(key, mods):
 		PLAYER.rotating -= 1
 	elif key == pyglet.window.key.LEFT:
 		PLAYER.rotating += 1
+	elif key == pyglet.window.key.Z:
+		PLAYER.firing = False
 
 @WINDOW.event
 def on_draw():
@@ -165,8 +223,20 @@ def game_setup():
 	global PLAYER
 	PLAYER = Ship(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
 
+# Main loop
 def game_update(dt):
 	PLAYER.update(dt)
+	i = 0
+	while i < len(BULLET_LIST):
+		b = BULLET_LIST[i]
+		# check and delete garbage before updating
+		if b.garbage:
+			BULLET_LIST.pop(i)
+			continue
+		else:
+			b.update(dt)
+			i += 1
+			continue
 
 
 game_setup()

@@ -1,9 +1,11 @@
 import pyglet
 import math
+import random
 
-# Global variables
+# Global variables and settings
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
+
 SHIP_MAX_SPEED = 600.0
 SHIP_MAX_SPEED_2 = SHIP_MAX_SPEED ** 2
 SHIP_ACCELERATION = 450.0
@@ -14,6 +16,18 @@ SHIP_FIRE_RATE = 0.35
 BULLET_SPEED = 750.0
 BULLET_INHERIT = 1.0
 BULLET_LIST = []
+
+ASTEROID_MAX_SPEED = 150.0
+ASTEROID_MIN_SPEED = 30.0
+ASTEROID_MAX_SPIN = 400.0
+ASTEROID_MIN_SPIN = 45.0
+ASTEROID_MED_SPEED = 1.3
+ASTEROID_SMALL_SPEED = 1.9
+ASTEROID_LIST = []
+MAX_ASTEROIDS = 10
+SPAWN_WAIT_MIN = 1.8
+SPAWN_WAIT_MAX = 5.0
+SPAWN_TIMER = SPAWN_WAIT_MIN
 
 # Other globals
 BATCH = pyglet.graphics.Batch()
@@ -31,6 +45,8 @@ bullet_image.anchor_y = bullet_image.height // 2
 asteroid_image = pyglet.image.load("asteroid.png")
 asteroid_image.anchor_x = asteroid_image.width // 2
 asteroid_image.anchor_y = asteroid_image.height // 2
+asteroid_image.half_width = asteroid_image.width // 2
+asteroid_image.half_height = asteroid_image.height // 2
 
 # Class definitions
 
@@ -64,6 +80,11 @@ class Vector2():
 		self.x = math.cos(s_dir) * s_mag
 		self.y = math.sin(s_dir) * s_mag
 
+	# Multiply length
+	def scale(self, s_scale):
+		self.x *= s_scale
+		self.y *= s_scale
+
 	# Resize if longer than max_mag
 	def clamp(self, max_mag):
 		if self.get_mag2() > max_mag * max_mag:
@@ -79,6 +100,66 @@ class Vector2():
 		multi = (mag - s_sub) / mag
 		self.x *= multi
 		self.y *= multi
+
+class Asteroid(pyglet.sprite.Sprite):
+	"""Asteroid to shoot. Asteroids will have the collision checking"""
+	def __init__(self, x, y, angle, speed, size = 3):
+		super().__init__(asteroid_image, batch = BATCH)
+		self.x = x
+		self.y = y
+		self.speed = Vector2()
+		self.speed.set_dir_mag(angle, speed)
+		# 3 = big asteroid
+		self.size = size
+		if size == 2:
+			self.speed.scale(random.uniform(1.0, ASTEROID_MED_SPEED))
+		elif size == 1:
+			self.speed.scale(random.uniform(ASTEROID_MED_SPEED, ASTEROID_SMALL_SPEED))
+		self.garbage = False
+		self.spin = random.uniform(ASTEROID_MIN_SPIN, ASTEROID_MAX_SPIN - ASTEROID_MIN_SPIN)
+		self.spin *= random.choice([1, -1])
+
+	def update(self, dt):
+		self.x += self.speed.x * dt
+		self.y += self.speed.y * dt
+
+		self.rotation += self.spin * dt
+
+		# Wrap if entirely over edge
+		if self.x + asteroid_image.width < 0:
+			self.x = SCREEN_WIDTH + self.width
+		elif self.x > SCREEN_WIDTH + self.width:
+			self.x = -self.width
+		if self.y + asteroid_image.height < 0:
+			self.y = SCREEN_HEIGHT + self.height
+		elif self.y > SCREEN_HEIGHT + self.height:
+			self.y = -self.height
+
+# Helper to tidy things a bit
+def spawn_asteroid():
+	pos = random.choice([0, 1])
+	spawn_x = random.randrange(0, SCREEN_WIDTH)
+	spawn_y = random.randrange(0, SCREEN_HEIGHT)
+	spawn_angle = 0
+	spawn_speed = random.uniform(ASTEROID_MIN_SPEED, ASTEROID_MAX_SPEED - ASTEROID_MIN_SPEED)
+	size = random.randrange(0, 100)
+	if size > 95:
+		size = 1
+	elif size > 85:
+		size = 2
+	else:
+		size = 3
+	roid = None
+	if pos == 0:
+		spawn_x = SCREEN_WIDTH + asteroid_image.half_width
+		spawn_angle = random.uniform(110, 240) + random.choice([0, 180])
+	else:
+		spawn_y = SCREEN_HEIGHT + asteroid_image.half_height
+		spawn_angle = random.uniform(30, 150) + random.choice([0, 180])
+	roid = Asteroid(spawn_x, spawn_y, spawn_angle, spawn_speed)
+	ASTEROID_LIST.append(roid)
+
+		
 
 class Bullet(pyglet.sprite.Sprite):
 	"""Bullet fired from ship. Travels in one direction at a constant speed"""
@@ -183,6 +264,7 @@ def update_label():
 	LABEL.text = 'FPS: {:.1f}'.format(pyglet.clock.get_fps())
 	LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
 	LABEL.text += '\nTotal Bullets: {}'.format(len(BULLET_LIST))
+	LABEL.text += '\nTotal Asteroids: {} Timer {:.1f}'.format(len(ASTEROID_LIST), SPAWN_TIMER)
 
 # Hooks
 # Left right controls are reversed because stupid pyglet does clockwise rotation
@@ -198,6 +280,8 @@ def on_key_press(key, mods):
 		PLAYER.rotating -= 1
 	elif key == pyglet.window.key.Z:
 		PLAYER.firing = True
+	elif key == pyglet.window.key.P:
+		spawn_asteroid()
 
 @WINDOW.event
 def on_key_release(key, mods):
@@ -225,8 +309,10 @@ def game_setup():
 
 # Main loop
 def game_update(dt):
+	global SPAWN_TIMER
 	PLAYER.update(dt)
 	i = 0
+	# update bullets
 	while i < len(BULLET_LIST):
 		b = BULLET_LIST[i]
 		# check and delete garbage before updating
@@ -237,6 +323,27 @@ def game_update(dt):
 			b.update(dt)
 			i += 1
 			continue
+
+	# update roids
+	i = 0
+	while i < len(ASTEROID_LIST):
+		a = ASTEROID_LIST[i]
+		# check and delete garbage before updating
+		if a.garbage:
+			ASTEROID_LIST.pop(i)
+			continue
+		else:
+			a.update(dt)
+			i += 1
+			continue
+	
+	if SPAWN_TIMER <= 0:
+		SPAWN_TIMER = random.uniform(SPAWN_WAIT_MIN, SPAWN_WAIT_MAX)
+		if len(ASTEROID_LIST) < MAX_ASTEROIDS:
+			spawn_asteroid()
+	else:
+		SPAWN_TIMER -= dt
+
 
 
 game_setup()

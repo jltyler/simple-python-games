@@ -6,13 +6,16 @@ import random
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
 DEBUG_PRINTOUT = False
+RESPAWN_WAIT = 3.0
+RESPAWN_TIMER = RESPAWN_WAIT
+RESTART = False
 
-SHIP_MAX_SPEED = 600.0
+SHIP_MAX_SPEED = 650.0
 SHIP_MAX_SPEED_2 = SHIP_MAX_SPEED ** 2
-SHIP_ACCELERATION = 450.0
-SHIP_FRICTION = 200.0
-SHIP_ROTATION = 215.0
-SHIP_FIRE_RATE = 0.25
+SHIP_ACCELERATION = 420.0
+SHIP_FRICTION = 80.0
+SHIP_ROTATION = 225.0
+SHIP_FIRE_RATE = 0.20
 
 SCORE = 0
 ACCURACY = 0
@@ -20,22 +23,22 @@ ACCURACY_MULTIPLER = 5.0
 SHOTS_FIRED = 0
 SHOTS_HIT = 0
 
-BULLET_SPEED = 750.0
+BULLET_SPEED = 800.0
 BULLET_INHERIT = 1.0
 BULLET_LIST = []
 
-ASTEROID_MAX_SPEED = 150.0
-ASTEROID_MIN_SPEED = 30.0
+ASTEROID_MAX_SPEED = 175.0
+ASTEROID_MIN_SPEED = 25.0
 ASTEROID_MAX_SPIN = 400.0
 ASTEROID_MIN_SPIN = 45.0
-ASTEROID_MED_SPEED = 1.3
-ASTEROID_SMALL_SPEED = 1.9
+ASTEROID_MED_SPEED = 1.4
+ASTEROID_SMALL_SPEED = 2.1
 ASTEROID_SCORE = 5
 
 ASTEROID_LIST = []
-MAX_ASTEROIDS = 18
-SPAWN_WAIT_MIN = 1.8
-SPAWN_WAIT_MAX = 5.0
+MAX_ASTEROIDS = 30
+SPAWN_WAIT_MIN = 0.9
+SPAWN_WAIT_MAX = 3.0
 SPAWN_TIMER = SPAWN_WAIT_MIN
 
 # Other globals
@@ -77,6 +80,16 @@ asteroid_small_image.anchor_x = asteroid_small_image.width // 2
 asteroid_small_image.anchor_y = asteroid_small_image.height // 2
 ASTEROID_SMALL_RADIUS2 = asteroid_small_image.anchor_x ** 2
 ASTEROID_RADIUS2[1] = ASTEROID_SMALL_RADIUS2
+
+# STEALING JOHN'S WORK AND NOT GIVING HIM CREDIT xDDDDD
+def sprite_sheet_anim(sprite_sheet, rows, columns, period=0.05, loop=True):
+	"""Pass it a sprite sheet, how many rows and columns the sheet has, a period for frames, 
+		and if the animation loops; returns a Sprite of the sheet animation if return_what is 1,
+		returns an animation image if return_what is 0."""
+	return pyglet.image.Animation.from_image_sequence(pyglet.image.ImageGrid(sprite_sheet, rows, columns), period, loop)
+
+explosion_big_sheet = pyglet.image.load("explosion_big.png")
+explosion_big_anim = sprite_sheet_anim(explosion_big_sheet, 1, 8, 0.1, False)
 
 # Class definitions
 
@@ -199,8 +212,9 @@ class Asteroid(pyglet.sprite.Sprite):
 		# Ship collision
 		diff_x = PLAYER.x - self.x
 		diff_y = PLAYER.y - self.y
-		if diff_x ** 2 + diff_y ** 2 < ASTEROID_RADIUS2[self.size] + SHIP_RADIUS2:
+		if not PLAYER.dead and diff_x ** 2 + diff_y ** 2 < ASTEROID_RADIUS2[self.size] + SHIP_RADIUS2:
 			self.garbage = True
+			PLAYER.death()
 
 # Helper to tidy things a bit
 def spawn_asteroid(x = None, y = None, size=None):
@@ -275,8 +289,10 @@ class Ship(pyglet.sprite.Sprite):
 		self.firing = False
 		# Fire rate (bullet) timer
 		self.btimer = 0
+		self.dead = False
 
 	def update(self, dt):
+		if self.dead: return
 		# Check for acceleration and apply friction if no acceleration
 		if self.accelerating != 0:
 			self.accelerate(self.accelerating * dt)
@@ -313,6 +329,15 @@ class Ship(pyglet.sprite.Sprite):
 		else:
 			self.btimer -= dt
 
+	def death(self):
+		self.x -= 24
+		self.y -= 24
+		self.dead = True
+		self.image = explosion_big_anim
+		self.rotation = 0
+		self.speed.x = 0
+		self.speed.y = 0
+
 
 	def accelerate(self, multi):
 		# Add acceleration vector to speed vector
@@ -330,18 +355,31 @@ PLAYER = None
 # Make pyglet window
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 # Label to draw FPS and pther debug stuff
-LABEL = pyglet.text.Label('LABELLOL', 'Courier New', 14.0,
-	True, False, (255, 255, 255, 255), 5, SCREEN_HEIGHT - 5,
-	SCREEN_WIDTH - 10, anchor_y = 'top', multiline = True, batch = BATCH)
+DEBUG_LABEL = pyglet.text.Label('', 'Courier New', 14.0,
+						True, False, (255, 150, 50, 255),
+						5, SCREEN_HEIGHT - 5, SCREEN_WIDTH - 10,
+						anchor_y = 'top', multiline = True, batch = BATCH)
+
+# Score label on other side
+SCORE_LABEL = pyglet.text.Label('', 'Courier New', 20.0,
+						True, False, (150, 130, 255, 255),
+						SCREEN_WIDTH - 5, SCREEN_HEIGHT - 5, SCREEN_WIDTH - 10, 100,
+						'right', 'top', 'right', True, batch = BATCH)
+
+# Death label and timer
+RESPAWN_LABEL = pyglet.text.Label('', 'Comic Sans MS', 40.0,
+								False, False, (255, 255, 255, 255),
+								SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, SCREEN_WIDTH, 200,
+								'center', 'center','center', multiline = True, batch = BATCH)
 
 # Function to change the label text on each draw
 def update_label():
-	LABEL.text = 'SCORE: {} Multipler: {:.1f} ({:.0f}%)'.format(SCORE, ACCURACY_MULTIPLER * ACCURACY, ACCURACY * 100)
-	LABEL.text += '\nFPS: {:.1f}'.format(pyglet.clock.get_fps())
+	SCORE_LABEL.text = 'SCORE: {}\nMulti: {:.1f}x ({:.0f}%)'.format(SCORE, ACCURACY_MULTIPLER * ACCURACY, ACCURACY * 100)
 	if DEBUG_PRINTOUT:
-		LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
-		LABEL.text += '\nTotal Bullets: {}'.format(len(BULLET_LIST))
-		LABEL.text += '\nTotal Asteroids: {} Timer {:.1f}'.format(len(ASTEROID_LIST), SPAWN_TIMER)
+		DEBUG_LABEL.text = 'FPS: {:.1f}'.format(pyglet.clock.get_fps())
+		DEBUG_LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
+		DEBUG_LABEL.text += '\nTotal Bullets: {}'.format(len(BULLET_LIST))
+		DEBUG_LABEL.text += '\nTotal Asteroids: {} Timer {:.1f}'.format(len(ASTEROID_LIST), SPAWN_TIMER)
 
 # Hooks
 # Left right controls are reversed because stupid pyglet does clockwise rotation
@@ -362,6 +400,7 @@ def on_key_press(key, mods):
 	elif key == pyglet.window.key.O:
 		global DEBUG_PRINTOUT
 		DEBUG_PRINTOUT = not DEBUG_PRINTOUT
+		DEBUG_LABEL.text = ''
 
 @WINDOW.event
 def on_key_release(key, mods):
@@ -416,6 +455,29 @@ def game_update(dt):
 			a.update(dt)
 			i += 1
 			continue
+
+	# Check for player death
+	if PLAYER.dead:
+		global RESPAWN_TIMER, BULLET_LIST, ASTEROID_LIST, SCORE, ACCURACY, SHOTS_FIRED, SHOTS_HIT
+		# PLAYER.visible = False
+		RESPAWN_TIMER -= dt
+		RESPAWN_LABEL.text = 'YOU LOSE MANG!\nSCORE: {}'.format(SCORE)
+		RESPAWN_LABEL.color = (random.randrange(255), random.randrange(255), random.randrange(255), 255)
+		if RESPAWN_TIMER <= 0:
+			RESPAWN_TIMER = RESPAWN_WAIT
+			PLAYER.dead = False
+			PLAYER.x = SCREEN_WIDTH // 2
+			PLAYER.y = SCREEN_HEIGHT // 2
+			PLAYER.image = ship_image
+			BULLET_LIST = []
+			ASTEROID_LIST = []
+			SCORE = 0
+			SHOTS_FIRED = 0
+			SHOTS_HIT = 0
+			ACCURACY = 0
+			RESPAWN_LABEL.text = ''
+
+
 	
 	if SPAWN_TIMER <= 0:
 		SPAWN_TIMER = random.uniform(SPAWN_WAIT_MIN, SPAWN_WAIT_MAX)

@@ -5,13 +5,20 @@ import random
 # Global variables and settings
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
+DEBUG_PRINTOUT = False
 
 SHIP_MAX_SPEED = 600.0
 SHIP_MAX_SPEED_2 = SHIP_MAX_SPEED ** 2
 SHIP_ACCELERATION = 450.0
 SHIP_FRICTION = 200.0
 SHIP_ROTATION = 215.0
-SHIP_FIRE_RATE = 0.35
+SHIP_FIRE_RATE = 0.25
+
+SCORE = 0
+ACCURACY = 0
+ACCURACY_MULTIPLER = 5.0
+SHOTS_FIRED = 0
+SHOTS_HIT = 0
 
 BULLET_SPEED = 750.0
 BULLET_INHERIT = 1.0
@@ -23,8 +30,10 @@ ASTEROID_MAX_SPIN = 400.0
 ASTEROID_MIN_SPIN = 45.0
 ASTEROID_MED_SPEED = 1.3
 ASTEROID_SMALL_SPEED = 1.9
+ASTEROID_SCORE = 5
+
 ASTEROID_LIST = []
-MAX_ASTEROIDS = 10
+MAX_ASTEROIDS = 18
 SPAWN_WAIT_MIN = 1.8
 SPAWN_WAIT_MAX = 5.0
 SPAWN_TIMER = SPAWN_WAIT_MIN
@@ -38,14 +47,17 @@ ship_image = pyglet.image.load("ship.png")
 ship_image.anchor_x = ship_image.width // 2
 ship_image.anchor_y = ship_image.height // 2
 SHIP_RADIUS = ship_image.anchor_x
+# adding a bit of radius to be generous about collisions
 SHIP_RADIUS2 = (SHIP_RADIUS+7) ** 2
+
 # Set up bullet sprite
 bullet_image = pyglet.image.load("bullet.png")
 bullet_image.anchor_x = bullet_image.width // 2
 bullet_image.anchor_y = bullet_image.height // 2
 BULLET_RADIUS = bullet_image.anchor_x
-BULLET_RADIUS2 = BULLET_RADIUS ** 2
-# Set up asteroid sprite
+BULLET_RADIUS2 = (BULLET_RADIUS + 4) ** 2
+
+# Set up asteroid sprites
 asteroid_image = pyglet.image.load("asteroid.png")
 asteroid_image.anchor_x = asteroid_image.width // 2
 asteroid_image.anchor_y = asteroid_image.height // 2
@@ -165,6 +177,17 @@ class Asteroid(pyglet.sprite.Sprite):
 			diff_y = b.y - self.y
 			# Check distance
 			if diff_x ** 2 + diff_y ** 2 < ASTEROID_RADIUS2[self.size] + BULLET_RADIUS2:
+				global SHOTS_HIT, ACCURACY, SCORE
+				# hit
+				SHOTS_HIT += 1
+				ACCURACY = SHOTS_HIT / SHOTS_FIRED
+				# mediums are worth 2x base score and small worth 3x base score
+				# then multiplied by accuracy and flat multiplier
+				points = (ASTEROID_SCORE + (3 - self.size) * ASTEROID_SCORE) * max(1.0, ACCURACY * ACCURACY_MULTIPLER)
+				# >80% accuracy = double score
+				if ACCURACY > 0.8:
+					points *= 2
+				SCORE += round(points)
 				if self.size >= 2:
 					spawn_asteroid(self.x, self.y, self.size - 1)
 					spawn_asteroid(self.x, self.y, self.size - 1)
@@ -285,6 +308,8 @@ class Ship(pyglet.sprite.Sprite):
 				b = Bullet(self.x, self.y, self.rotation, + BULLET_SPEED) # + (self.speed.get_mag() * BULLET_INHERIT)
 				BULLET_LIST.append(b)
 				self.btimer = SHIP_FIRE_RATE
+				global SHOTS_FIRED
+				SHOTS_FIRED += 1
 		else:
 			self.btimer -= dt
 
@@ -311,10 +336,12 @@ LABEL = pyglet.text.Label('LABELLOL', 'Courier New', 14.0,
 
 # Function to change the label text on each draw
 def update_label():
-	LABEL.text = 'FPS: {:.1f}'.format(pyglet.clock.get_fps())
-	LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
-	LABEL.text += '\nTotal Bullets: {}'.format(len(BULLET_LIST))
-	LABEL.text += '\nTotal Asteroids: {} Timer {:.1f}'.format(len(ASTEROID_LIST), SPAWN_TIMER)
+	LABEL.text = 'SCORE: {} Multipler: {:.1f} ({:.0f}%)'.format(SCORE, ACCURACY_MULTIPLER * ACCURACY, ACCURACY * 100)
+	LABEL.text += '\nFPS: {:.1f}'.format(pyglet.clock.get_fps())
+	if DEBUG_PRINTOUT:
+		LABEL.text += '\nPlayer: {:.2f}, {:.2f} Speed: {:.2f}, {:.2f} ({:.2f})'.format(PLAYER.x, PLAYER.y, PLAYER.speed.x, PLAYER.speed.y, PLAYER.speed.get_mag())
+		LABEL.text += '\nTotal Bullets: {}'.format(len(BULLET_LIST))
+		LABEL.text += '\nTotal Asteroids: {} Timer {:.1f}'.format(len(ASTEROID_LIST), SPAWN_TIMER)
 
 # Hooks
 # Left right controls are reversed because stupid pyglet does clockwise rotation
@@ -332,6 +359,9 @@ def on_key_press(key, mods):
 		PLAYER.firing = True
 	elif key == pyglet.window.key.P:
 		spawn_asteroid()
+	elif key == pyglet.window.key.O:
+		global DEBUG_PRINTOUT
+		DEBUG_PRINTOUT = not DEBUG_PRINTOUT
 
 @WINDOW.event
 def on_key_release(key, mods):

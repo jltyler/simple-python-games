@@ -37,16 +37,34 @@ GROUP_FORE = pyglet.graphics.Group(1) # Using groups is crashing for some reason
 ship_image = pyglet.image.load("ship.png")
 ship_image.anchor_x = ship_image.width // 2
 ship_image.anchor_y = ship_image.height // 2
+SHIP_RADIUS = ship_image.anchor_x
+SHIP_RADIUS2 = (SHIP_RADIUS+7) ** 2
 # Set up bullet sprite
 bullet_image = pyglet.image.load("bullet.png")
 bullet_image.anchor_x = bullet_image.width // 2
 bullet_image.anchor_y = bullet_image.height // 2
+BULLET_RADIUS = bullet_image.anchor_x
+BULLET_RADIUS2 = BULLET_RADIUS ** 2
 # Set up asteroid sprite
 asteroid_image = pyglet.image.load("asteroid.png")
 asteroid_image.anchor_x = asteroid_image.width // 2
 asteroid_image.anchor_y = asteroid_image.height // 2
 asteroid_image.half_width = asteroid_image.width // 2
 asteroid_image.half_height = asteroid_image.height // 2
+ASTEROID_RADIUS = asteroid_image.half_width
+ASTEROID_RADIUS2 = [None, None, None, ASTEROID_RADIUS ** 2]
+
+asteroid_med_image = pyglet.image.load("asteroid_med.png")
+asteroid_med_image.anchor_x = asteroid_med_image.width // 2
+asteroid_med_image.anchor_y = asteroid_med_image.height // 2
+ASTEROID_MED_RADIUS2 = asteroid_med_image.anchor_x ** 2
+ASTEROID_RADIUS2[2] = ASTEROID_MED_RADIUS2
+
+asteroid_small_image = pyglet.image.load("asteroid_small.png")
+asteroid_small_image.anchor_x = asteroid_small_image.width // 2
+asteroid_small_image.anchor_y = asteroid_small_image.height // 2
+ASTEROID_SMALL_RADIUS2 = asteroid_small_image.anchor_x ** 2
+ASTEROID_RADIUS2[1] = ASTEROID_SMALL_RADIUS2
 
 # Class definitions
 
@@ -107,15 +125,19 @@ class Asteroid(pyglet.sprite.Sprite):
 		super().__init__(asteroid_image, batch = BATCH)
 		self.x = x
 		self.y = y
-		self.speed = Vector2()
-		self.speed.set_dir_mag(angle, speed)
 		# 3 = big asteroid
 		self.size = size
+		self.speed = Vector2()
+		self.speed.set_dir_mag(angle, speed)
+		# Increase speed for smaller roids
 		if size == 2:
 			self.speed.scale(random.uniform(1.0, ASTEROID_MED_SPEED))
+			self.image = asteroid_med_image
 		elif size == 1:
 			self.speed.scale(random.uniform(ASTEROID_MED_SPEED, ASTEROID_SMALL_SPEED))
+			self.image = asteroid_small_image
 		self.garbage = False
+		# Some random spin
 		self.spin = random.uniform(ASTEROID_MIN_SPIN, ASTEROID_MAX_SPIN - ASTEROID_MIN_SPIN)
 		self.spin *= random.choice([1, -1])
 
@@ -135,29 +157,57 @@ class Asteroid(pyglet.sprite.Sprite):
 		elif self.y > SCREEN_HEIGHT + self.height:
 			self.y = -self.height
 
+		# Bullet collisions
+		for b in BULLET_LIST:
+			if b.garbage: continue
+			# Get x,y difference
+			diff_x = b.x - self.x
+			diff_y = b.y - self.y
+			# Check distance
+			if diff_x ** 2 + diff_y ** 2 < ASTEROID_RADIUS2[self.size] + BULLET_RADIUS2:
+				if self.size >= 2:
+					spawn_asteroid(self.x, self.y, self.size - 1)
+					spawn_asteroid(self.x, self.y, self.size - 1)
+				if self.size == 2:
+					spawn_asteroid(self.x, self.y, self.size - 1)
+				self.garbage = True
+				b.garbage = True
+
+		# Ship collision
+		diff_x = PLAYER.x - self.x
+		diff_y = PLAYER.y - self.y
+		if diff_x ** 2 + diff_y ** 2 < ASTEROID_RADIUS2[self.size] + SHIP_RADIUS2:
+			self.garbage = True
+
 # Helper to tidy things a bit
-def spawn_asteroid():
-	pos = random.choice([0, 1])
-	spawn_x = random.randrange(0, SCREEN_WIDTH)
-	spawn_y = random.randrange(0, SCREEN_HEIGHT)
-	spawn_angle = 0
+def spawn_asteroid(x = None, y = None, size=None):
+	spawn_x = x
+	spawn_y = y
+	spawn_angle = random.randrange(360)
 	spawn_speed = random.uniform(ASTEROID_MIN_SPEED, ASTEROID_MAX_SPEED - ASTEROID_MIN_SPEED)
-	size = random.randrange(0, 100)
-	if size > 95:
-		size = 1
-	elif size > 85:
-		size = 2
-	else:
-		size = 3
-	roid = None
-	if pos == 0:
-		spawn_x = SCREEN_WIDTH + asteroid_image.half_width
-		spawn_angle = random.uniform(110, 240) + random.choice([0, 180])
-	else:
-		spawn_y = SCREEN_HEIGHT + asteroid_image.half_height
-		spawn_angle = random.uniform(30, 150) + random.choice([0, 180])
-	roid = Asteroid(spawn_x, spawn_y, spawn_angle, spawn_speed)
-	ASTEROID_LIST.append(roid)
+
+	# You can use size paramter to force a certain size
+	if size == None:
+		size = random.randrange(0, 100)
+		if size > 95:
+			size = 1
+		elif size > 85:
+			size = 2
+		else:
+			size = 3
+
+	if x == None or y == None:
+		pos = random.choice([0, 1]) # Choose between horizontal and vertical
+		if pos == 0:
+			spawn_x = SCREEN_WIDTH + asteroid_image.half_width
+			spawn_y = random.randrange(SCREEN_HEIGHT)
+			spawn_angle = random.uniform(110, 240) + random.choice([0, 180])
+		else:
+			spawn_x = random.randrange(SCREEN_WIDTH)
+			spawn_y = SCREEN_HEIGHT + asteroid_image.half_height
+			spawn_angle = random.uniform(30, 150) + random.choice([0, 180])
+
+	ASTEROID_LIST.append(Asteroid(spawn_x, spawn_y, spawn_angle, spawn_speed, size))
 
 		
 

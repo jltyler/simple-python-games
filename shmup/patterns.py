@@ -28,7 +28,7 @@ class Bullet(pyglet.sprite.Sprite):
 		self.x += self.speed_x * dt
 		self.y += self.speed_y * dt
 
-		if self.y > SCREEN_HEIGHT:
+		if self.y > SCREEN_HEIGHT or self.y < 0 or self.x > SCREEN_WIDTH or self.x < 0:
 			self.garbage = True
 
 def get_default_speed(timer):
@@ -67,9 +67,10 @@ class Spawner():
 
 def game_setup():
 	print("Setup")
-	spawner1 = Spawner(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 96, 240, 0.05, 100, 5, 15)
-	spawner1.angle_func = lambda t: (math.sin(4 * t) * 30) + math.sin(0.8* t) * 45
-	spawner1.speed_func = lambda t: math.sin(0.8* t) * 100
+	spawner1 = Spawner(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 96, 240, 0.05, 100, 6, 60)
+	# spawner1.angle_func = lambda t: (math.sin(4 * t) * 30) + math.sin(0.8* t) * 45
+	spawner1.angle_func = lambda t: t*165
+	spawner1.speed_func = lambda t: math.sin(0.4* t) * 50
 	SPAWNER_LIST.append(spawner1)
 	print("Setup completed")
 

@@ -14,6 +14,7 @@ PLAYER_DIAGONAL_MOD = 0.70710678118 # root of 2 over 2
 PLAYER_SLOW_MOD = 0.5
 PLAYER_FIRE_RATE = 0.25
 PLAYER_HIT_RADIUS = 4
+PLAYER_HIT_RADIUS2 = PLAYER_HIT_RADIUS ** 2
 PLAYER_HIT_X = 0
 PLAYER_HIT_Y = 4
 
@@ -25,7 +26,7 @@ ENEMY_SPEED = 100.0
 ENEMY_HEALTH = 100.0
 ENEMY_LIST = []
 ENEMY_BULLET_LIST = []
-WAVE_SPAWN_WAIT = 3.0
+WAVE_SPAWN_WAIT = 0.01 # 3.0
 
 BATCH = pyglet.graphics.Batch()
 
@@ -89,6 +90,51 @@ class PlayerBullet(pyglet.sprite.Sprite):
 		if self.y > SCREEN_HEIGHT:
 			self.garbage = True
 
+class EnemyBullet(pyglet.sprite.Sprite):
+	"""Bullet shot by enemy. Travels in a straight line."""
+	def __init__(self, x, y, speed, angle):
+		super().__init__(bullet_image, batch = BATCH)
+		self.x = x
+		self.y = y
+		self.speed_x = math.cos(math.radians(angle)) * speed
+		self.speed_y = math.sin(math.radians(angle)) * speed
+		self.angle = angle
+		self.garbage = False
+
+	def update(self, dt):
+		self.x += self.speed_x * dt
+		self.y += self.speed_y * dt
+
+		if (self.x > SCREEN_WIDTH or self.x < 0 or
+			self.y > SCREEN_HEIGHT or self.y < 0):
+			self.garbage = True
+
+class Spawner():
+	"""Spawns bullets with a pattern"""
+	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, angle_offset = 15):
+		super(Spawner, self).__init__()
+		self.attached = attached
+		self.base_angle = base_angle
+		self.fire_rate = fire_rate
+		self.base_speed = base_speed
+		self.bullets = bullets
+		self.angle_offset = angle_offset
+		self.btimer = fire_rate
+		self.speed_func = lambda t: 0
+		self.angle_func = lambda t: 0
+
+	def spawn(self, timer):
+		speed = self.base_speed + abs(self.speed_func(timer))
+		angle = self.base_angle + self.angle_func(timer)
+		for i in range(self.bullets):
+			ENEMY_BULLET_LIST.append(EnemyBullet(self.attached.x, self.attached.y, speed, angle + i * self.angle_offset))
+
+	def update(self, dt):
+		self.btimer -= dt
+		if self.btimer <= 0:
+			self.spawn(GAME_TIMER)
+			self.btimer = self.fire_rate
+
 class Enemy(pyglet.sprite.Sprite):
 	"""Basic enemy move n shooter"""
 	def __init__(self, x, y):
@@ -96,11 +142,12 @@ class Enemy(pyglet.sprite.Sprite):
 		self.x = x
 		self.y = y
 		self.garbage = False
-		print("Kerspawned {}, {}".format(x, y))
+		self.weapon = Spawner(self, 255, 1.5, 200, 3)
 
 	def update(self, dt):
 		# Go down
 		self.y -= ENEMY_SPEED * dt
+		self.weapon.update(dt)
 		if self.y <= -32:
 			self.garbage = True
 		
@@ -162,8 +209,19 @@ DEBUG_LABEL = pyglet.text.Label('ffff', 'Courier New', 14.0,
 
 def update_debug_label(dt):
 	DEBUG_LABEL.text = "FPS: {:.2f} (dt:{:.5f})".format(pyglet.clock.get_fps(), dt)
-	DEBUG_LABEL.text += "\nPlayer {}, {} |Bullets: {}".format(PLAYER.x, PLAYER.y, len(PLAYER_BULLET_LIST))
+	DEBUG_LABEL.text += "\nPlayer {:.1f}, {:.1f} |Bullets: {}".format(PLAYER.x, PLAYER.y, len(PLAYER_BULLET_LIST))
 	DEBUG_LABEL.text += "\nEnemies: {} |Bullets: {}".format(len(ENEMY_LIST), len(ENEMY_BULLET_LIST))
+
+def player_collision_tick(dt):
+	px = PLAYER.x + PLAYER_HIT_X
+	py = PLAYER.y + PLAYER_HIT_Y
+	for b in ENEMY_BULLET_LIST:
+		dx = b.x - px
+		dy = b.y - py
+		# Check radii
+		if dx**2 + dy**2 < PLAYER_HIT_RADIUS2:
+			print("DEAD PLAYER")
+			b.garbage = True
 
 
 # Controls implemented
@@ -222,12 +280,17 @@ def update_list(ulist, dt):
 # Main update loop
 def game_update(dt):
 	global GAME_TIMER
+	GAME_TIMER += dt
+
 	PLAYER.update(dt)
 	TEST_LEVEL.update(dt)
+
 	update_list(PLAYER_BULLET_LIST, dt)
 	update_list(ENEMY_LIST, dt)
-	# update_list(ENEMY_BULLET_LIST)
-	GAME_TIMER += dt
+	update_list(ENEMY_BULLET_LIST, dt)
+
+	player_collision_tick(dt)
+	
 	update_debug_label(dt)
 
 # Off we go then

@@ -223,6 +223,14 @@ def player_collision_tick(dt):
 			print("DEAD PLAYER")
 			b.garbage = True
 
+def enemy_collision_tick(dt):
+	for e in ENEMY_LIST:
+		for b in PLAYER_BULLET_LIST:
+			if (b.x - e.x) ** 2 + (b.y - e.y) ** 2 < enemy_image.anchor_x ** 2:
+				e.garbage = True
+				e.visible = False
+				b.garbage = True
+
 
 # Controls implemented
 @WINDOW.event
@@ -290,6 +298,7 @@ def game_update(dt):
 	update_list(ENEMY_BULLET_LIST, dt)
 
 	player_collision_tick(dt)
+	enemy_collision_tick(dt)
 	
 	update_debug_label(dt)
 

@@ -21,8 +21,8 @@ PLAYER_HIT_Y = 4
 PLAYER_BULLET_SPEED = 450.0
 PLAYER_BULLET_DAMAGE = 20.0
 PLAYER_BULLET_LIST = []
-PLAYER_GUN_OFFSET_LEFT = (-11, 11)
-PLAYER_GUN_OFFSET_RIGHT = (11, 11)
+PLAYER_GUN_OFFSET_LEFT = (-10, 11)
+PLAYER_GUN_OFFSET_RIGHT = (10, 11)
 
 ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
 ENEMY_LIST = []
@@ -31,6 +31,11 @@ WAVE_SPAWN_WAIT = 0.01 # 3.0
 
 ENEMY1_Y_SPEED = -80.0
 ENEMY1_HEALTH = 30.0
+
+ENEMY2_HEALTH = 45.0
+ENEMY2_SPREAD = 10.0
+ENEMY2_FIRE_RATE = 1.3
+ENEMY2_FIRE_ANGLE = 270 - ENEMY2_SPREAD
 
 BATCH = pyglet.graphics.Batch()
 
@@ -58,6 +63,10 @@ bullet_image.anchor_y = bullet_image.height // 2
 enemy_image = pyglet.image.load("enemy.png")
 enemy_image.anchor_x = enemy_image.width // 2
 enemy_image.anchor_y = enemy_image.height // 2
+
+enemy_shooter_image = pyglet.image.load("enemy_shoot.png")
+enemy_shooter_image.anchor_x = enemy_shooter_image.width // 2
+enemy_shooter_image.anchor_y = enemy_shooter_image.height // 2
 
 def fire_weapon_1(player):
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT[0], player.y + PLAYER_GUN_OFFSET_LEFT[1]))
@@ -112,7 +121,6 @@ class EnemyBullet(pyglet.sprite.Sprite):
 		self.y = y
 		self.speed_x = math.cos(math.radians(angle)) * speed
 		self.speed_y = math.sin(math.radians(angle)) * speed
-		self.angle = angle
 		self.garbage = False
 
 	def update(self, dt):
@@ -126,7 +134,6 @@ class EnemyBullet(pyglet.sprite.Sprite):
 class Spawner():
 	"""Spawns bullets with a pattern"""
 	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, angle_offset = 15):
-		super(Spawner, self).__init__()
 		self.attached = attached
 		self.base_angle = base_angle
 		self.fire_rate = fire_rate
@@ -151,8 +158,8 @@ class Spawner():
 
 class Enemy(pyglet.sprite.Sprite):
 	"""Basic enemy mover"""
-	def __init__(self, x, y):
-		super().__init__(enemy_image, batch = BATCH)
+	def __init__(self, x, y, image = enemy_image):
+		super().__init__(image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.garbage = False
@@ -179,10 +186,24 @@ class Enemy(pyglet.sprite.Sprite):
 		self.garbage = True
 		self.visible = False
 		
+class EnemyShoots(Enemy):
+	"""Enemy that fires triples at a fixed angle"""
+	def __init__(self, x, y):
+		super().__init__(x, y, enemy_shooter_image)
+		self.health = ENEMY2_HEALTH
+		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, 250, 3, ENEMY2_SPREAD)
+
+	def update(self, dt):
+		super().update(dt)
+		if self.garbage: return
+		self.weapon.update(dt)
+
+		
 		
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
-	def __init__(self, x_list, time_list):
+	def __init__(self, enemy_list, x_list, time_list):
+		self.enemy_list = enemy_list # List of enemy types to spawn
 		self.x_list = x_list # List of x locations to spawn at
 		self.time_list = time_list # List of times between spawns
 		self.timer = self.time_list.pop(0) # Grab first time length
@@ -191,7 +212,8 @@ class EnemyPattern():
 	def update(self, dt):
 		self.timer -= dt
 		while self.timer <= 0:
-			ENEMY_LIST.append(Enemy(self.x_list.pop(0), SCREEN_HEIGHT + 32)) # Spawn
+			etype = self.enemy_list.pop(0)
+			ENEMY_LIST.append(etype(self.x_list.pop(0), SCREEN_HEIGHT + 32)) # Spawn
 			if len(self.time_list) == 0: # If on last one we're finished
 				self.finished = True
 				self.timer = 999.9
@@ -226,11 +248,11 @@ class LevelPattern():
 		else:
 			self.timer -= dt
 		
-WAVE_1 = EnemyPattern([SCREEN_WIDTH - 64] * 8, [0.8] * 8)
-WAVE_2 = EnemyPattern([64] * 8, [0.8] * 8)
-WAVE_3 = EnemyPattern([64 + i*42 for i in range(12)], [1.0] * 12)
-WAVE_4 = EnemyPattern([SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
-WAVE_DOUBLE = EnemyPattern([SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
+WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
+WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
+WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], [1.0] * 12)
+WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
+WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
 TEST_LEVEL = LevelPattern([WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
 

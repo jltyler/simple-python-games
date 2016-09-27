@@ -21,12 +21,16 @@ PLAYER_HIT_Y = 4
 PLAYER_BULLET_SPEED = 450.0
 PLAYER_BULLET_DAMAGE = 20.0
 PLAYER_BULLET_LIST = []
+PLAYER_GUN_OFFSET_LEFT = (-11, 11)
+PLAYER_GUN_OFFSET_RIGHT = (11, 11)
 
-ENEMY_SPEED = 100.0
-ENEMY_HEALTH = 100.0
+ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
 ENEMY_LIST = []
 ENEMY_BULLET_LIST = []
 WAVE_SPAWN_WAIT = 0.01 # 3.0
+
+ENEMY1_Y_SPEED = -80.0
+ENEMY1_HEALTH = 30.0
 
 BATCH = pyglet.graphics.Batch()
 
@@ -43,6 +47,10 @@ ship_image = pyglet.image.load("ship.png")
 ship_image.anchor_x = ship_image.width // 2
 ship_image.anchor_y = ship_image.height // 2
 
+player_bullet_image = pyglet.image.load("player_bullet.png")
+player_bullet_image.anchor_x = player_bullet_image.width // 2
+player_bullet_image.anchor_y = player_bullet_image.height // 2
+
 bullet_image = pyglet.image.load("bullet.png")
 bullet_image.anchor_x = bullet_image.width // 2
 bullet_image.anchor_y = bullet_image.height // 2
@@ -50,6 +58,10 @@ bullet_image.anchor_y = bullet_image.height // 2
 enemy_image = pyglet.image.load("enemy.png")
 enemy_image.anchor_x = enemy_image.width // 2
 enemy_image.anchor_y = enemy_image.height // 2
+
+def fire_weapon_1(player):
+	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT[0], player.y + PLAYER_GUN_OFFSET_LEFT[1]))
+	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_RIGHT[0], player.y + PLAYER_GUN_OFFSET_RIGHT[1]))
 
 class Player(pyglet.sprite.Sprite):
 	"""Player ship that moves n shoots"""
@@ -74,15 +86,17 @@ class Player(pyglet.sprite.Sprite):
 		if self.shooting:
 			if self.btimer <= 0:
 				self.btimer = PLAYER_FIRE_RATE
-				PLAYER_BULLET_LIST.append(PlayerBullet(self.x, self.y))
+				PLAYER_BULLET_LIST.append(PlayerBullet(self.x + PLAYER_GUN_OFFSET_LEFT[0], self.y + PLAYER_GUN_OFFSET_LEFT[1]))
+				PLAYER_BULLET_LIST.append(PlayerBullet(self.x + PLAYER_GUN_OFFSET_RIGHT[0], self.y + PLAYER_GUN_OFFSET_RIGHT[1]))
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
-	def __init__(self, x, y):
-		super().__init__(bullet_image, batch = BATCH)
+	def __init__(self, x, y, damage = 10.0):
+		super().__init__(player_bullet_image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.garbage = False
+		self.damage = damage
 
 	def update(self, dt):
 		# Go up
@@ -136,20 +150,35 @@ class Spawner():
 			self.btimer = self.fire_rate
 
 class Enemy(pyglet.sprite.Sprite):
-	"""Basic enemy move n shooter"""
+	"""Basic enemy mover"""
 	def __init__(self, x, y):
 		super().__init__(enemy_image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.garbage = False
-		self.weapon = Spawner(self, 255, 1.5, 200, 3)
+		self.base_x_speed = 0
+		self.base_y_speed = ENEMY1_Y_SPEED
+		self.x_speed_func = lambda t: 0
+		self.y_speed_func = lambda t: 0
+		self.health = ENEMY1_HEALTH
 
 	def update(self, dt):
 		# Go down
-		self.y -= ENEMY_SPEED * dt
-		self.weapon.update(dt)
-		if self.y <= -32:
+		self.x += (self.base_x_speed + self.x_speed_func(GAME_TIMER)) * dt
+		self.y += (self.base_y_speed + self.y_speed_func(GAME_TIMER)) * dt
+		if self.y <= ENEMY_GARBAGE_BORDER:
 			self.garbage = True
+
+	def impact(self, bullet):
+		if bullet.garbage: return
+		self.health -= bullet.damage
+		if self.health <= 0:
+			self.death()
+
+	def death(self):
+		self.garbage = True
+		self.visible = False
+		
 		
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
@@ -161,10 +190,11 @@ class EnemyPattern():
 
 	def update(self, dt):
 		self.timer -= dt
-		if self.timer <= 0:
+		while self.timer <= 0:
 			ENEMY_LIST.append(Enemy(self.x_list.pop(0), SCREEN_HEIGHT + 32)) # Spawn
 			if len(self.time_list) == 0: # If on last one we're finished
 				self.finished = True
+				self.timer = 999.9
 			else:
 				self.timer = self.time_list.pop(0)
 
@@ -175,6 +205,7 @@ class LevelPattern():
 		self.timer = WAVE_SPAWN_WAIT # Time between waves
 		self.spawning = False
 		self.active = None # Active pattern
+		self.last = False
 
 	def update(self, dt):
 		if self.spawning:
@@ -185,7 +216,10 @@ class LevelPattern():
 			else:
 				return
 		if self.timer <= 0:
+			if self.last: return
 			self.active = self.patterns.pop(0)
+			if len(self.patterns) == 0:
+				self.last = True
 			self.spawning = True
 			self.timer = WAVE_SPAWN_WAIT
 			print("{} waves left".format(len(self.patterns)))
@@ -195,8 +229,10 @@ class LevelPattern():
 WAVE_1 = EnemyPattern([SCREEN_WIDTH - 64] * 8, [0.8] * 8)
 WAVE_2 = EnemyPattern([64] * 8, [0.8] * 8)
 WAVE_3 = EnemyPattern([64 + i*42 for i in range(12)], [1.0] * 12)
+WAVE_4 = EnemyPattern([SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
+WAVE_DOUBLE = EnemyPattern([SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
-TEST_LEVEL = LevelPattern([WAVE_1, WAVE_2, WAVE_3])
+TEST_LEVEL = LevelPattern([WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()
@@ -226,9 +262,9 @@ def player_collision_tick(dt):
 def enemy_collision_tick(dt):
 	for e in ENEMY_LIST:
 		for b in PLAYER_BULLET_LIST:
+			if b.garbage: continue
 			if (b.x - e.x) ** 2 + (b.y - e.y) ** 2 < enemy_image.anchor_x ** 2:
-				e.garbage = True
-				e.visible = False
+				e.impact(b)
 				b.garbage = True
 
 

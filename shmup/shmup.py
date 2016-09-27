@@ -72,13 +72,11 @@ enemy_image = pyglet.image.load("enemy.png")
 enemy_image.anchor_x = enemy_image.width // 2
 enemy_image.anchor_y = enemy_image.height // 2
 
-<<<<<<< HEAD
 enemy_shooter_image = pyglet.image.load("enemy_shoot.png")
 enemy_shooter_image.anchor_x = enemy_shooter_image.width // 2
 enemy_shooter_image.anchor_y = enemy_shooter_image.height // 2
 
-=======
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
+# Weapon firing functions
 def fire_weapon_1(player):
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT[0], player.y + PLAYER_GUN_OFFSET_LEFT[1]))
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_RIGHT[0], player.y + PLAYER_GUN_OFFSET_RIGHT[1]))
@@ -169,13 +167,9 @@ class Spawner():
 
 class Enemy(pyglet.sprite.Sprite):
 	"""Basic enemy mover"""
-<<<<<<< HEAD
 	def __init__(self, x, y, image = enemy_image):
 		super().__init__(image, batch = BATCH)
-=======
-	def __init__(self, x, y):
-		super().__init__(enemy_image, batch = BATCH)
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
+
 		self.x = x
 		self.y = y
 		self.garbage = False
@@ -202,7 +196,6 @@ class Enemy(pyglet.sprite.Sprite):
 		self.garbage = True
 		self.visible = False
 		
-<<<<<<< HEAD
 class EnemyShoots(Enemy):
 	"""Enemy that fires triples at a fixed angle"""
 	def __init__(self, x, y):
@@ -214,10 +207,6 @@ class EnemyShoots(Enemy):
 		super().update(dt)
 		if self.garbage: return
 		self.weapon.update(dt)
-
-		
-=======
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
 		
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
@@ -231,12 +220,8 @@ class EnemyPattern():
 	def update(self, dt):
 		self.timer -= dt
 		while self.timer <= 0:
-<<<<<<< HEAD
 			etype = self.enemy_list.pop(0)
 			ENEMY_LIST.append(etype(self.x_list.pop(0), SCREEN_HEIGHT + 32)) # Spawn
-=======
-			ENEMY_LIST.append(Enemy(self.x_list.pop(0), SCREEN_HEIGHT + 32)) # Spawn
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
 			if len(self.time_list) == 0: # If on last one we're finished
 				self.finished = True
 				self.timer = 999.9
@@ -271,19 +256,11 @@ class LevelPattern():
 		else:
 			self.timer -= dt
 		
-<<<<<<< HEAD
 WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
 WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
 WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], [1.0] * 12)
 WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
 WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
-=======
-WAVE_1 = EnemyPattern([SCREEN_WIDTH - 64] * 8, [0.8] * 8)
-WAVE_2 = EnemyPattern([64] * 8, [0.8] * 8)
-WAVE_3 = EnemyPattern([64 + i*42 for i in range(12)], [1.0] * 12)
-WAVE_4 = EnemyPattern([SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
-WAVE_DOUBLE = EnemyPattern([SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
 
 TEST_LEVEL = LevelPattern([WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
 

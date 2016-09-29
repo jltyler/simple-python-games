@@ -21,30 +21,31 @@ PLAYER_HIT_Y = 4
 PLAYER_BULLET_SPEED = 450.0
 PLAYER_BULLET_DAMAGE = 20.0
 PLAYER_BULLET_LIST = []
-<<<<<<< HEAD
 PLAYER_GUN_OFFSET_LEFT = (-10, 11)
 PLAYER_GUN_OFFSET_RIGHT = (10, 11)
-=======
-PLAYER_GUN_OFFSET_LEFT = (-11, 11)
-PLAYER_GUN_OFFSET_RIGHT = (11, 11)
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
 
 ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
 ENEMY_LIST = []
 ENEMY_BULLET_LIST = []
 WAVE_SPAWN_WAIT = 0.01 # 3.0
 
+ENEMY_BULLET_SPEED = 250
+
 ENEMY1_Y_SPEED = -80.0
 ENEMY1_HEALTH = 30.0
 
-<<<<<<< HEAD
 ENEMY2_HEALTH = 45.0
 ENEMY2_SPREAD = 10.0
 ENEMY2_FIRE_RATE = 1.3
 ENEMY2_FIRE_ANGLE = 270 - ENEMY2_SPREAD
 
-=======
->>>>>>> 9127f40305cb3b899e60b30141a8a19c249bb1f9
+ENEMY3_HEALTH = 300.0
+ENEMY3_SPEED = 120.0
+ENEMY3_FIRE_RATE = 0.2
+ENEMY3_FIRE_FUNC = lambda t: math.sin(t*4)*35
+ENEMY3_TARGET_Y = SCREEN_HEIGHT - 150
+ENEMY3_TARGET_X = 150
+
 BATCH = pyglet.graphics.Batch()
 
 # Controls
@@ -75,6 +76,10 @@ enemy_image.anchor_y = enemy_image.height // 2
 enemy_shooter_image = pyglet.image.load("enemy_shoot.png")
 enemy_shooter_image.anchor_x = enemy_shooter_image.width // 2
 enemy_shooter_image.anchor_y = enemy_shooter_image.height // 2
+
+enemy_stop_image = pyglet.image.load("enemy_stop.png")
+enemy_stop_image.anchor_x = enemy_stop_image.width // 2
+enemy_stop_image.anchor_y = enemy_stop_image.height // 2
 
 # Weapon firing functions
 def fire_weapon_1(player):
@@ -152,6 +157,8 @@ class Spawner():
 		self.btimer = fire_rate
 		self.speed_func = lambda t: 0
 		self.angle_func = lambda t: 0
+		self.active = True
+		self.timer = 0.0
 
 	def spawn(self, timer):
 		speed = self.base_speed + abs(self.speed_func(timer))
@@ -160,9 +167,11 @@ class Spawner():
 			ENEMY_BULLET_LIST.append(EnemyBullet(self.attached.x, self.attached.y, speed, angle + i * self.angle_offset))
 
 	def update(self, dt):
+		if not self.active: return
 		self.btimer -= dt
+		self.timer += dt
 		if self.btimer <= 0:
-			self.spawn(GAME_TIMER)
+			self.spawn(self.timer)
 			self.btimer = self.fire_rate
 
 class Enemy(pyglet.sprite.Sprite):
@@ -201,12 +210,46 @@ class EnemyShoots(Enemy):
 	def __init__(self, x, y):
 		super().__init__(x, y, enemy_shooter_image)
 		self.health = ENEMY2_HEALTH
-		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, 250, 3, ENEMY2_SPREAD)
+		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, ENEMY_BULLET_SPEED, 3, ENEMY2_SPREAD)
 
 	def update(self, dt):
 		super().update(dt)
 		if self.garbage: return
 		self.weapon.update(dt)
+
+class EnemyStops(Enemy):
+	"""Goes to a point on the screen then stops and starts firing"""
+	def __init__(self, x, y, target_x = None, target_y = None):
+		super().__init__(x, y, enemy_stop_image)
+		if target_x == None:
+			if x < ENEMY3_TARGET_X:
+				target_x = ENEMY3_TARGET_X
+			else:
+				target_x = SCREEN_WIDTH - ENEMY3_TARGET_X
+		self.target_x = target_x
+		if target_y == None:
+			target_y = ENEMY3_TARGET_Y
+		self.target_y = target_y
+		self.weapon = Spawner(self, 270 - 15, ENEMY3_FIRE_RATE, ENEMY_BULLET_SPEED, 3, 15)
+		self.weapon.angle_func = ENEMY3_FIRE_FUNC
+		self.stopped = False
+		self.health = ENEMY3_HEALTH
+
+	def update(self, dt):
+		if self.stopped:
+			self.weapon.update(dt)
+		else:
+			dx = self.target_x - self.x
+			dy = self.target_y - self.y
+			move_tick = ENEMY3_SPEED * dt
+			self.x += math.copysign(move_tick, dx)
+			self.y += math.copysign(move_tick, dy)
+			if abs(dx) < move_tick and abs(dy) < move_tick:
+				self.stopped = True
+				self.x = self.target_x
+				self.y = self.target_y
+
+		
 		
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
@@ -256,13 +299,14 @@ class LevelPattern():
 		else:
 			self.timer -= dt
 		
+WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
 WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
 WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
 WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], [1.0] * 12)
 WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
 WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
-TEST_LEVEL = LevelPattern([WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
+TEST_LEVEL = LevelPattern([WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()

@@ -41,10 +41,12 @@ ENEMY2_FIRE_ANGLE = 270 - ENEMY2_SPREAD
 
 ENEMY3_HEALTH = 300.0
 ENEMY3_SPEED = 120.0
-ENEMY3_FIRE_RATE = 0.2
-ENEMY3_FIRE_FUNC = lambda t: math.sin(t*4)*35
+ENEMY3_FIRE_RATE = 0.7
+ENEMY3_FIRE_FUNC = lambda t: t*30
 ENEMY3_TARGET_Y = SCREEN_HEIGHT - 150
 ENEMY3_TARGET_X = 150
+ENEMY3_BULLETS = 72
+ENEMY3_SPREAD = 5
 
 BATCH = pyglet.graphics.Batch()
 
@@ -230,7 +232,7 @@ class EnemyStops(Enemy):
 		if target_y == None:
 			target_y = ENEMY3_TARGET_Y
 		self.target_y = target_y
-		self.weapon = Spawner(self, 270 - 15, ENEMY3_FIRE_RATE, ENEMY_BULLET_SPEED, 3, 15)
+		self.weapon = Spawner(self, 270 - 15, ENEMY3_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY3_BULLETS, ENEMY3_SPREAD)
 		self.weapon.angle_func = ENEMY3_FIRE_FUNC
 		self.stopped = False
 		self.health = ENEMY3_HEALTH

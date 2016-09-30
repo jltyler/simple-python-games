@@ -13,13 +13,13 @@ PLAYER_MOVE_SPEED = 250.0
 PLAYER_DIAGONAL_MOD = 0.70710678118 # root of 2 over 2
 PLAYER_SLOW_MOD = 0.5
 PLAYER_FIRE_RATE = 0.25
-PLAYER_HIT_RADIUS = 4
+PLAYER_HIT_RADIUS = 3
 PLAYER_HIT_RADIUS2 = PLAYER_HIT_RADIUS ** 2
 PLAYER_HIT_X = 0
-PLAYER_HIT_Y = 4
+PLAYER_HIT_Y = 5
 
 PLAYER_BULLET_SPEED = 450.0
-PLAYER_BULLET_DAMAGE = 20.0
+PLAYER_BULLET_DAMAGE = 10.0
 PLAYER_BULLET_LIST = []
 PLAYER_BULLET_RADIUS = 3
 PLAYER_BULLET_RADIUS2 = PLAYER_BULLET_RADIUS**2
@@ -33,24 +33,27 @@ ENEMY_LIST = []
 ENEMY_BULLET_LIST = []
 WAVE_SPAWN_WAIT = 0.01 # 3.0
 
-ENEMY_BULLET_SPEED = 250
+ENEMY_BULLET_SPEED = 250.0
+ENEMY_BULLET_RADIUS = 6
+ENEMY_BULLET_RADIUS2 = ENEMY_BULLET_RADIUS**2
 
-ENEMY1_Y_SPEED = -80.0
+ENEMY1_Y_SPEED = -95.0
 ENEMY1_HEALTH = 30.0
 
 ENEMY2_HEALTH = 45.0
-ENEMY2_SPREAD = 10.0
+ENEMY2_SPREAD = 4
+ENEMY2_BULLETS = 4
 ENEMY2_FIRE_RATE = 1.3
-ENEMY2_FIRE_ANGLE = 270 - ENEMY2_SPREAD
+ENEMY2_FIRE_ANGLE = 270 - (ENEMY2_SPREAD * (ENEMY2_BULLETS - 1)) / 2
 
 ENEMY3_HEALTH = 300.0
 ENEMY3_SPEED = 120.0
-ENEMY3_FIRE_RATE = 0.6
+ENEMY3_FIRE_RATE = 1.2
 ENEMY3_FIRE_FUNC = lambda t: t*30
 ENEMY3_TARGET_Y = SCREEN_HEIGHT - 150
 ENEMY3_TARGET_X = 150
 ENEMY3_BULLETS = 18
-ENEMY3_SPREAD = 20
+ENEMY3_SPREAD = 20.0
 
 BATCH = pyglet.graphics.Batch()
 
@@ -105,7 +108,7 @@ def fire_weapon_2(player):
 class Player(pyglet.sprite.Sprite):
 	"""Player ship that moves n shoots"""
 	def __init__(self):
-		super().__init__(ship_image, batch = BATCH)
+		super().__init__(ship_image) #, batch = BATCH)
 		self.moving = [0, 0] # move x, y
 		self.x = SCREEN_WIDTH_HALF
 		self.y = 48
@@ -129,7 +132,7 @@ class Player(pyglet.sprite.Sprite):
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
-	def __init__(self, x, y, damage = 10.0):
+	def __init__(self, x, y, damage = PLAYER_BULLET_DAMAGE):
 		super().__init__(player_bullet_image, batch = BATCH)
 		self.x = x
 		self.y = y
@@ -225,7 +228,7 @@ class EnemyShoots(Enemy):
 	def __init__(self, x, y):
 		super().__init__(x, y, enemy_shooter_image)
 		self.health = ENEMY2_HEALTH
-		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, ENEMY_BULLET_SPEED, 3, ENEMY2_SPREAD)
+		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY2_BULLETS, ENEMY2_SPREAD)
 
 	def update(self, dt):
 		super().update(dt)
@@ -321,7 +324,7 @@ WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], 
 WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
 WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
-TEST_LEVEL = LevelPattern([WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
+TEST_LEVEL = LevelPattern([WAVE_3, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()
@@ -344,7 +347,7 @@ def player_collision_tick(dt):
 		dx = b.x - px
 		dy = b.y - py
 		# Check radii
-		if dx**2 + dy**2 < PLAYER_HIT_RADIUS2:
+		if dx**2 + dy**2 < PLAYER_HIT_RADIUS2 + ENEMY_BULLET_RADIUS2:
 			print("DEAD PLAYER")
 			b.garbage = True
 
@@ -394,6 +397,7 @@ def on_key_release(key, mods):
 @WINDOW.event
 def on_draw():
 	WINDOW.clear()
+	PLAYER.draw()
 	BATCH.draw()
 	DEBUG_LABEL.draw()
 

@@ -21,8 +21,12 @@ PLAYER_HIT_Y = 4
 PLAYER_BULLET_SPEED = 450.0
 PLAYER_BULLET_DAMAGE = 20.0
 PLAYER_BULLET_LIST = []
-PLAYER_GUN_OFFSET_LEFT = (-10, 11)
-PLAYER_GUN_OFFSET_RIGHT = (10, 11)
+PLAYER_BULLET_RADIUS = 3
+PLAYER_BULLET_RADIUS2 = PLAYER_BULLET_RADIUS**2
+PLAYER_GUN_OFFSET_LEFT = (-8, 11)
+PLAYER_GUN_OFFSET_RIGHT = (8, 11)
+PLAYER_GUN_OFFSET_LEFT2 = (-14, 6)
+PLAYER_GUN_OFFSET_RIGHT2 = (14, 6)
 
 ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
 ENEMY_LIST = []
@@ -41,12 +45,12 @@ ENEMY2_FIRE_ANGLE = 270 - ENEMY2_SPREAD
 
 ENEMY3_HEALTH = 300.0
 ENEMY3_SPEED = 120.0
-ENEMY3_FIRE_RATE = 0.7
+ENEMY3_FIRE_RATE = 0.6
 ENEMY3_FIRE_FUNC = lambda t: t*30
 ENEMY3_TARGET_Y = SCREEN_HEIGHT - 150
 ENEMY3_TARGET_X = 150
-ENEMY3_BULLETS = 72
-ENEMY3_SPREAD = 5
+ENEMY3_BULLETS = 18
+ENEMY3_SPREAD = 20
 
 BATCH = pyglet.graphics.Batch()
 
@@ -83,10 +87,20 @@ enemy_stop_image = pyglet.image.load("enemy_stop.png")
 enemy_stop_image.anchor_x = enemy_stop_image.width // 2
 enemy_stop_image.anchor_y = enemy_stop_image.height // 2
 
+enemy_aim_image = pyglet.image.load("enemy_aim.png")
+enemy_aim_image.anchor_x = enemy_aim_image.width // 2
+enemy_aim_image.anchor_y = enemy_aim_image.height // 2
+
 # Weapon firing functions
 def fire_weapon_1(player):
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT[0], player.y + PLAYER_GUN_OFFSET_LEFT[1]))
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_RIGHT[0], player.y + PLAYER_GUN_OFFSET_RIGHT[1]))
+
+def fire_weapon_2(player):
+	fire_weapon_1(player)
+	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT2[0], player.y + PLAYER_GUN_OFFSET_LEFT2[1]))
+	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_RIGHT2[0], player.y + PLAYER_GUN_OFFSET_RIGHT2[1]))
+
 
 class Player(pyglet.sprite.Sprite):
 	"""Player ship that moves n shoots"""
@@ -111,8 +125,7 @@ class Player(pyglet.sprite.Sprite):
 		if self.shooting:
 			if self.btimer <= 0:
 				self.btimer = PLAYER_FIRE_RATE
-				PLAYER_BULLET_LIST.append(PlayerBullet(self.x + PLAYER_GUN_OFFSET_LEFT[0], self.y + PLAYER_GUN_OFFSET_LEFT[1]))
-				PLAYER_BULLET_LIST.append(PlayerBullet(self.x + PLAYER_GUN_OFFSET_RIGHT[0], self.y + PLAYER_GUN_OFFSET_RIGHT[1]))
+				fire_weapon_1(self)
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
@@ -180,7 +193,6 @@ class Enemy(pyglet.sprite.Sprite):
 	"""Basic enemy mover"""
 	def __init__(self, x, y, image = enemy_image):
 		super().__init__(image, batch = BATCH)
-
 		self.x = x
 		self.y = y
 		self.garbage = False
@@ -189,6 +201,7 @@ class Enemy(pyglet.sprite.Sprite):
 		self.x_speed_func = lambda t: 0
 		self.y_speed_func = lambda t: 0
 		self.health = ENEMY1_HEALTH
+		self.box = [image.width // 2, image.height // 2]
 
 	def update(self, dt):
 		# Go down
@@ -339,7 +352,9 @@ def enemy_collision_tick(dt):
 	for e in ENEMY_LIST:
 		for b in PLAYER_BULLET_LIST:
 			if b.garbage: continue
-			if (b.x - e.x) ** 2 + (b.y - e.y) ** 2 < enemy_image.anchor_x ** 2:
+			cx = min(max(b.x, e.x - e.box[0]), e.x + e.box[0])
+			cy = min(max(b.y, e.y - e.box[1]), e.y + e.box[1])
+			if (cx - b.x)**2 + (cy - b.y)**2 < PLAYER_BULLET_RADIUS2:
 				e.impact(b)
 				b.garbage = True
 

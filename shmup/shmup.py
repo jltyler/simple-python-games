@@ -1,5 +1,6 @@
 import pyglet
 import math
+import random
 
 # Set up globals
 SCREEN_WIDTH = 640
@@ -9,8 +10,9 @@ SCREEN_HEIGHT_HALF = SCREEN_HEIGHT // 2
 DEBUG_PRINTOUT = False
 GAME_TIMER = 0
 
+# Player settings
 PLAYER_MOVE_SPEED = 250.0
-PLAYER_DIAGONAL_MOD = 0.70710678118 # root of 2 over 2
+PLAYER_DIAGONAL_MOD = 0.70710678118 # root of 2 over 2 (not used yet)
 PLAYER_SLOW_MOD = 0.5
 PLAYER_FIRE_RATE = 0.25
 PLAYER_HIT_RADIUS = 3
@@ -18,20 +20,33 @@ PLAYER_HIT_RADIUS2 = PLAYER_HIT_RADIUS ** 2
 PLAYER_HIT_X = 0
 PLAYER_HIT_Y = 5
 
-PLAYER_BULLET_SPEED = 450.0
-PLAYER_BULLET_DAMAGE = 10.0
-PLAYER_BULLET_LIST = []
-PLAYER_BULLET_RADIUS = 3
-PLAYER_BULLET_RADIUS2 = PLAYER_BULLET_RADIUS**2
+# Weapon stuff
 PLAYER_GUN_OFFSET_LEFT = (-8, 11)
 PLAYER_GUN_OFFSET_RIGHT = (8, 11)
 PLAYER_GUN_OFFSET_LEFT2 = (-14, 6)
 PLAYER_GUN_OFFSET_RIGHT2 = (14, 6)
 
+PLAYER_BULLET_SPEED = 450.0
+PLAYER_BULLET_DAMAGE = 10.0
+PLAYER_BULLET_RADIUS = 3
+PLAYER_BULLET_RADIUS2 = PLAYER_BULLET_RADIUS**2
+
+PLAYER_BIGBULLET_SPEED = 480.0
+PLAYER_BIGBULLET_DAMAGE = 35.0
+PLAYER_BIGBULLET_RADIUS = 4.5
+PLAYER_BIGBULLET_RADIUS2 = PLAYER_BIGBULLET_RADIUS ** 2
+
+# Diagonal bullet
+PLAYER_DIAGBULLET_SPEED = 450.0
+PLAYER_DIAGBULLET_ANGLE = math.radians(50.0)
+PLAYER_DIAGBULLET_DAMAGE = 15.0
+PLAYER_DIAGBULLET_RADIUS = 4.5
+PLAYER_DIAGBULLET_RADIUS2 = PLAYER_DIAGBULLET_RADIUS ** 2
+
+
+# Enemy settings
 ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
-ENEMY_LIST = []
-ENEMY_BULLET_LIST = []
-WAVE_SPAWN_WAIT = 0.01 # 3.0
+WAVE_SPAWN_WAIT = 0.01 # 3.0 # How long between waves
 
 ENEMY_BULLET_SPEED = 250.0
 ENEMY_BULLET_RADIUS = 6
@@ -56,11 +71,23 @@ ENEMY3_BULLETS = 18
 ENEMY3_SPREAD = 20.0
 
 ENEMY4_HEALTH = 30.0
-ENEMY4_SPEED = 120.0
+ENEMY4_SPEED = 100.0
 ENEMY4_FIRE_RATE = 0.5
 ENEMY4_BULLETS = 3
 ENEMY4_SPREAD = 10.0
 ENEMY4_SPREAD_OFF = (ENEMY4_SPREAD * (ENEMY4_BULLETS - 1)) / 2
+
+# Powerup settings
+POWERUP_MOVE_SPEED = 200.0
+POWERUP_MOVE_TIMER = 0.8
+POWERUP_RADIUS = 32
+POWERUP_RADIUS2 = POWERUP_RADIUS ** 2
+
+# Entity lists
+PLAYER_BULLET_LIST = []
+ENEMY_LIST = []
+ENEMY_BULLET_LIST = []
+MISC_LIST = []
 
 BATCH = pyglet.graphics.Batch()
 
@@ -71,46 +98,62 @@ KEY_LEFT = pyglet.window.key.LEFT
 KEY_RIGHT = pyglet.window.key.RIGHT
 KEY_SHOOT = pyglet.window.key.Z
 KEY_SLOW = pyglet.window.key.X
+KEY_CHEAT_POWERUP = pyglet.window.key.P
 
-# Load and set up sprites
-ship_image = pyglet.image.load("ship.png")
-ship_image.anchor_x = ship_image.width // 2
-ship_image.anchor_y = ship_image.height // 2
+# ======== LOADING GRAPHICS ========
+# STEALING JOHN'S WORK AND NOT GIVING HIM CREDIT xDDDDD
+def sprite_sheet_anim(sprite_sheet, rows, columns, period=0.05, loop=True):
+	return pyglet.image.Animation.from_image_sequence(pyglet.image.ImageGrid(sprite_sheet, rows, columns), period, loop)
 
-player_bullet_image = pyglet.image.load("player_bullet.png")
-player_bullet_image.anchor_x = player_bullet_image.width // 2
-player_bullet_image.anchor_y = player_bullet_image.height // 2
+def center_anchor(image):
+	image.anchor_x = image.width // 2
+	image.anchor_Y = image.height // 2
 
-bullet_image = pyglet.image.load("bullet.png")
-bullet_image.anchor_x = bullet_image.width // 2
-bullet_image.anchor_y = bullet_image.height // 2
+def prepare_image(file):
+	image = pyglet.image.load(file)
+	center_anchor(image)
+	return image
 
-enemy_image = pyglet.image.load("enemy.png")
-enemy_image.anchor_x = enemy_image.width // 2
-enemy_image.anchor_y = enemy_image.height // 2
+ship_image = prepare_image("ship.png")
+player_bullet_image = prepare_image("player_bullet.png")
+player_bigbullet_image = prepare_image("player_bigbullet.png")
+player_diagbullet_image = prepare_image("player_diagbullet.png")
+player_diagbullet_image_flip = player_diagbullet_image.get_texture().get_transform(flip_x = True)
+bullet_image = prepare_image("bullet.png")
+enemy_image = prepare_image("enemy.png")
+enemy_shooter_image = prepare_image("enemy_shoot.png")
+enemy_stop_image = prepare_image("enemy_stop.png")
+enemy_aim_image = prepare_image("enemy_aim.png")
 
-enemy_shooter_image = pyglet.image.load("enemy_shoot.png")
-enemy_shooter_image.anchor_x = enemy_shooter_image.width // 2
-enemy_shooter_image.anchor_y = enemy_shooter_image.height // 2
-
-enemy_stop_image = pyglet.image.load("enemy_stop.png")
-enemy_stop_image.anchor_x = enemy_stop_image.width // 2
-enemy_stop_image.anchor_y = enemy_stop_image.height // 2
-
-enemy_aim_image = pyglet.image.load("enemy_aim.png")
-enemy_aim_image.anchor_x = enemy_aim_image.width // 2
-enemy_aim_image.anchor_y = enemy_aim_image.height // 2
+powerup_image = pyglet.image.load("powerup1.png")
+powerup_anim = sprite_sheet_anim(powerup_image, 1, 8, 0.125)
+# Gotta set anchor for each frame
+for f in powerup_anim.frames:
+	center_anchor(f.image)
 
 # Weapon firing functions
-def fire_weapon_1(player):
+def fire_weapon_0(player):
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT[0], player.y + PLAYER_GUN_OFFSET_LEFT[1]))
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_RIGHT[0], player.y + PLAYER_GUN_OFFSET_RIGHT[1]))
 
-def fire_weapon_2(player):
-	fire_weapon_1(player)
+def fire_weapon_1(player):
+	fire_weapon_0(player)
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_LEFT2[0], player.y + PLAYER_GUN_OFFSET_LEFT2[1]))
 	PLAYER_BULLET_LIST.append(PlayerBullet(player.x + PLAYER_GUN_OFFSET_RIGHT2[0], player.y + PLAYER_GUN_OFFSET_RIGHT2[1]))
 
+def fire_weapon_2(player):
+	fire_weapon_0(player)
+	PLAYER_BULLET_LIST.append(PlayerBigBullet(player.x + PLAYER_GUN_OFFSET_LEFT2[0], player.y + PLAYER_GUN_OFFSET_LEFT2[1]))
+	PLAYER_BULLET_LIST.append(PlayerBigBullet(player.x + PLAYER_GUN_OFFSET_RIGHT2[0], player.y + PLAYER_GUN_OFFSET_RIGHT2[1]))
+
+def fire_weapon_3(player):
+	fire_weapon_2(player)
+	PLAYER_BULLET_LIST.append(PlayerDiagBullet(player.x + PLAYER_GUN_OFFSET_LEFT2[0], player.y + PLAYER_GUN_OFFSET_LEFT2[1], True))
+	PLAYER_BULLET_LIST.append(PlayerDiagBullet(player.x + PLAYER_GUN_OFFSET_RIGHT2[0], player.y + PLAYER_GUN_OFFSET_RIGHT2[1]))
+
+
+# Fire function array
+fire_weapon = [fire_weapon_0, fire_weapon_1, fire_weapon_2, fire_weapon_3]
 
 class Player(pyglet.sprite.Sprite):
 	"""Player ship that moves n shoots"""
@@ -122,6 +165,7 @@ class Player(pyglet.sprite.Sprite):
 		self.shooting = False
 		self.speed_multi = 1.0
 		self.btimer = 0
+		self.power_level = 3
 
 	def update(self, dt):
 		# Terrible movement code
@@ -135,12 +179,12 @@ class Player(pyglet.sprite.Sprite):
 		if self.shooting:
 			if self.btimer <= 0:
 				self.btimer = PLAYER_FIRE_RATE
-				fire_weapon_1(self)
+				fire_weapon[self.power_level](self)
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
-	def __init__(self, x, y, damage = PLAYER_BULLET_DAMAGE):
-		super().__init__(player_bullet_image, batch = BATCH)
+	def __init__(self, x, y, damage = PLAYER_BULLET_DAMAGE, image = player_bullet_image):
+		super().__init__(image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.garbage = False
@@ -151,6 +195,53 @@ class PlayerBullet(pyglet.sprite.Sprite):
 		self.y += PLAYER_BULLET_SPEED * dt
 		if self.y > SCREEN_HEIGHT:
 			self.garbage = True
+
+class PlayerBigBullet(PlayerBullet):
+	"""Big bullet does more damage and travels faster"""
+	def __init__(self, x, y):
+		super().__init__(x, y, PLAYER_BIGBULLET_DAMAGE, player_bigbullet_image)
+
+	def update(self, dt):
+		self.y += PLAYER_BIGBULLET_SPEED * dt
+		if self.y > SCREEN_HEIGHT:
+			self.garbage = True
+		
+class PlayerDiagBullet(PlayerBullet):
+	"""Bullet that shoots out diagonally"""
+	def __init__(self, x, y, flip = False):
+		super().__init__(x, y, PLAYER_DIAGBULLET_DAMAGE, player_diagbullet_image_flip if flip else player_diagbullet_image)
+		self.speed_x = math.cos(math.pi - PLAYER_DIAGBULLET_ANGLE if flip else PLAYER_DIAGBULLET_ANGLE) * PLAYER_DIAGBULLET_SPEED
+		self.speed_y = math.sin(PLAYER_DIAGBULLET_ANGLE) * PLAYER_DIAGBULLET_SPEED
+
+	def update(self, dt):
+		self.x += self.speed_x * dt
+		self.y += self.speed_y * dt
+		if self.y > SCREEN_HEIGHT:
+			self.garbage = True
+		
+
+class PowerUp(pyglet.sprite.Sprite):
+	"""WISE FWUM YO GWAVE"""
+	def __init__(self, x, y):
+		super().__init__(powerup_anim, batch = BATCH)
+		self.x = x
+		self.y = y
+		self.timer = POWERUP_MOVE_TIMER
+		self.new_dir()
+		self.garbage = False
+
+	def update(self, dt):
+		self.x += self.speed_x * dt
+		self.y += self.speed_y * dt
+		self.timer -= dt
+		if self.timer <= 0:
+			self.timer = POWERUP_MOVE_TIMER
+			self.new_dir()
+
+	def new_dir(self):
+		angle = random.uniform(0, 2*math.pi)
+		self.speed_x = math.cos(angle) * POWERUP_MOVE_SPEED
+		self.speed_y = math.sin(angle) * POWERUP_MOVE_SPEED
 
 class EnemyBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by enemy. Travels in a straight line."""
@@ -384,6 +475,19 @@ def player_collision_tick(dt):
 			print("DEAD PLAYER")
 			b.garbage = True
 
+	for e in MISC_LIST:
+		if issubclass(e.__class__, PowerUp):
+			dx = e.x - px
+			dy = e.y - py
+			# Check radii
+			if dx**2 + dy**2 < PLAYER_HIT_RADIUS2 + POWERUP_RADIUS2:
+				print("POWAH UP!")
+				PLAYER.power_level += 1
+				e.garbage = True
+				e.visible = False
+
+
+
 def enemy_collision_tick(dt):
 	for e in ENEMY_LIST:
 		for b in PLAYER_BULLET_LIST:
@@ -410,6 +514,8 @@ def on_key_press(key, mods):
 		PLAYER.shooting = True
 	elif key == KEY_SLOW:
 		PLAYER.speed_multi = PLAYER_SLOW_MOD
+	elif key == KEY_CHEAT_POWERUP:
+		MISC_LIST.append(PowerUp(200, 200))
 
 @WINDOW.event
 def on_key_release(key, mods):
@@ -460,6 +566,7 @@ def game_update(dt):
 	update_list(PLAYER_BULLET_LIST, dt)
 	update_list(ENEMY_LIST, dt)
 	update_list(ENEMY_BULLET_LIST, dt)
+	update_list(MISC_LIST, dt)
 
 	player_collision_tick(dt)
 	enemy_collision_tick(dt)

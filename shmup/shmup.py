@@ -72,13 +72,13 @@ ENEMY3_SPREAD = 20.0
 
 ENEMY4_HEALTH = 30.0
 ENEMY4_SPEED = 100.0
-ENEMY4_FIRE_RATE = 0.5
+ENEMY4_FIRE_RATE = 0.8
 ENEMY4_BULLETS = 3
-ENEMY4_SPREAD = 10.0
+ENEMY4_SPREAD = 4.0
 ENEMY4_SPREAD_OFF = (ENEMY4_SPREAD * (ENEMY4_BULLETS - 1)) / 2
 
 # Powerup settings
-POWERUP_MOVE_SPEED = 200.0
+POWERUP_MOVE_SPEED = 175.0
 POWERUP_MOVE_TIMER = 0.8
 POWERUP_RADIUS = 32
 POWERUP_RADIUS2 = POWERUP_RADIUS ** 2
@@ -114,18 +114,18 @@ def prepare_image(file):
 	center_anchor(image)
 	return image
 
-ship_image = prepare_image("ship.png")
-player_bullet_image = prepare_image("player_bullet.png")
-player_bigbullet_image = prepare_image("player_bigbullet.png")
-player_diagbullet_image = prepare_image("player_diagbullet.png")
+ship_image = prepare_image("img/ship.png")
+player_bullet_image = prepare_image("img/player_bullet.png")
+player_bigbullet_image = prepare_image("img/player_bigbullet.png")
+player_diagbullet_image = prepare_image("img/player_diagbullet.png")
 player_diagbullet_image_flip = player_diagbullet_image.get_texture().get_transform(flip_x = True)
-bullet_image = prepare_image("bullet.png")
-enemy_image = prepare_image("enemy.png")
-enemy_shooter_image = prepare_image("enemy_shoot.png")
-enemy_stop_image = prepare_image("enemy_stop.png")
-enemy_aim_image = prepare_image("enemy_aim.png")
+bullet_image = prepare_image("img/bullet.png")
+enemy_image = prepare_image("img/enemy.png")
+enemy_shooter_image = prepare_image("img/enemy_shoot.png")
+enemy_stop_image = prepare_image("img/enemy_stop.png")
+enemy_aim_image = prepare_image("img/enemy_aim.png")
 
-powerup_image = pyglet.image.load("powerup1.png")
+powerup_image = pyglet.image.load("img/powerup1.png")
 powerup_anim = sprite_sheet_anim(powerup_image, 1, 8, 0.125)
 # Gotta set anchor for each frame
 for f in powerup_anim.frames:
@@ -179,7 +179,7 @@ class Player(pyglet.sprite.Sprite):
 		if self.shooting:
 			if self.btimer <= 0:
 				self.btimer = PLAYER_FIRE_RATE
-				fire_weapon[self.power_level](self)
+				fire_weapon[min(self.power_level, len(fire_weapon) - 1)](self)
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
@@ -197,7 +197,7 @@ class PlayerBullet(pyglet.sprite.Sprite):
 			self.garbage = True
 
 class PlayerBigBullet(PlayerBullet):
-	"""Big bullet does more damage and travels faster"""
+	"""Big bullet does more damage and travels slightly faster"""
 	def __init__(self, x, y):
 		super().__init__(x, y, PLAYER_BIGBULLET_DAMAGE, player_bigbullet_image)
 
@@ -209,6 +209,7 @@ class PlayerBigBullet(PlayerBullet):
 class PlayerDiagBullet(PlayerBullet):
 	"""Bullet that shoots out diagonally"""
 	def __init__(self, x, y, flip = False):
+		# Flip a rooney dooney
 		super().__init__(x, y, PLAYER_DIAGBULLET_DAMAGE, player_diagbullet_image_flip if flip else player_diagbullet_image)
 		self.speed_x = math.cos(math.pi - PLAYER_DIAGBULLET_ANGLE if flip else PLAYER_DIAGBULLET_ANGLE) * PLAYER_DIAGBULLET_SPEED
 		self.speed_y = math.sin(PLAYER_DIAGBULLET_ANGLE) * PLAYER_DIAGBULLET_SPEED

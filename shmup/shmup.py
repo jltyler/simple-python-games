@@ -55,6 +55,13 @@ ENEMY3_TARGET_X = 150
 ENEMY3_BULLETS = 18
 ENEMY3_SPREAD = 20.0
 
+ENEMY4_HEALTH = 30.0
+ENEMY4_SPEED = 120.0
+ENEMY4_FIRE_RATE = 0.5
+ENEMY4_BULLETS = 3
+ENEMY4_SPREAD = 10.0
+ENEMY4_SPREAD_OFF = (ENEMY4_SPREAD * (ENEMY4_BULLETS - 1)) / 2
+
 BATCH = pyglet.graphics.Batch()
 
 # Controls
@@ -267,6 +274,31 @@ class EnemyStops(Enemy):
 				self.x = self.target_x
 				self.y = self.target_y
 
+def get_dir(x1, y1, x2, y2):
+		dx = x2 - x1
+		dy = y2 - y1
+		# lets not divide by zero now
+		if dy == 0:
+			return 0.0 if dx >= 0 else 180.0
+		elif dx == 0:
+			return 90.0 if dy >= 0 else 270.0
+		# get angle and convert to degrees
+		raw_deg = math.degrees(math.atan2(dy , dx))
+		# math.atan2 gives us negatives so we convert to between 0 and 360
+		return raw_deg if raw_deg >= 0 else (360+raw_deg)
+
+class EnemyAims(Enemy):
+	"""Enemy that moves down like others but aims at the player when it fires it's weapon"""
+	def __init__(self, x, y):
+		super().__init__(x, y, enemy_aim_image)
+		self.weapon = Spawner(self, 0, ENEMY4_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY4_BULLETS, ENEMY4_SPREAD)
+		self.health = ENEMY4_HEALTH
+		self.weapon.angle_func = lambda t: get_dir(self.x, self.y, PLAYER.x, PLAYER.y) - ENEMY4_SPREAD_OFF
+	
+	def update(self, dt):
+		self.y -= ENEMY4_SPEED * dt
+		# self.weapon.base_angle = get_dir(self.x, self.y, PLAYER.x, PLAYER.y)
+		self.weapon.update(dt)
 		
 		
 class EnemyPattern():
@@ -317,6 +349,7 @@ class LevelPattern():
 		else:
 			self.timer -= dt
 		
+WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
 WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
 WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
@@ -324,7 +357,7 @@ WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], 
 WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
 WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
-TEST_LEVEL = LevelPattern([WAVE_3, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
+TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()

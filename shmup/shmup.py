@@ -107,12 +107,20 @@ def sprite_sheet_anim(sprite_sheet, rows, columns, period=0.05, loop=True):
 
 def center_anchor(image):
 	image.anchor_x = image.width // 2
-	image.anchor_Y = image.height // 2
+	image.anchor_y = image.height // 2
 
 def prepare_image(file):
 	image = pyglet.image.load(file)
 	center_anchor(image)
 	return image
+
+def prepare_anim(file, rows, columns, period = 0.05, loop = True):
+	sheet = pyglet.image.load(file)
+	anim = sprite_sheet_anim(sheet, rows, columns, period, loop)
+	# Gotta set anchor for each frame
+	for f in anim.frames:
+		center_anchor(f.image)
+	return anim, sheet
 
 ship_image = prepare_image("img/ship.png")
 player_bullet_image = prepare_image("img/player_bullet.png")
@@ -125,11 +133,10 @@ enemy_shooter_image = prepare_image("img/enemy_shoot.png")
 enemy_stop_image = prepare_image("img/enemy_stop.png")
 enemy_aim_image = prepare_image("img/enemy_aim.png")
 
-powerup_image = pyglet.image.load("img/powerup1.png")
-powerup_anim = sprite_sheet_anim(powerup_image, 1, 8, 0.125)
-# Gotta set anchor for each frame
-for f in powerup_anim.frames:
-	center_anchor(f.image)
+powerup_anim, powerup_sheet = prepare_anim("img/powerup1.png", 1, 8, 0.125)
+explode64_anim, explode64_sheet = prepare_anim("img/explode64.png", 1, 8, 0.04)
+
+
 
 # Weapon firing functions
 def fire_weapon_0(player):
@@ -321,6 +328,7 @@ class Enemy(pyglet.sprite.Sprite):
 	def death(self):
 		self.garbage = True
 		self.visible = False
+		MISC_LIST.append(Explode(self.x, self.y))
 		
 class EnemyShoots(Enemy):
 	"""Enemy that fires triples at a fixed angle"""
@@ -441,6 +449,24 @@ class LevelPattern():
 		else:
 			self.timer -= dt
 		
+class Explode(pyglet.sprite.Sprite):
+	"""Stationary explosion"""
+	def __init__(self, x, y, image = explode64_anim):
+		super().__init__(image, batch = BATCH)
+		self.x = x
+		self.y = y
+		pyglet.clock.schedule_once(self.death, self.image.get_duration())
+		self.garbage = False
+
+	def update(self, dt):
+		return
+
+	def death(self, dt):
+		self.garbage = True
+		self.visible = False
+
+		
+
 WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
 WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)

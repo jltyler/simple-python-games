@@ -9,6 +9,7 @@ SCREEN_WIDTH_HALF = SCREEN_WIDTH // 2
 SCREEN_HEIGHT_HALF = SCREEN_HEIGHT // 2
 DEBUG_PRINTOUT = False
 GAME_TIMER = 0
+GAME_OVER = False
 
 # Player settings
 PLAYER_MOVE_SPEED = 250.0
@@ -19,6 +20,10 @@ PLAYER_HIT_RADIUS = 3
 PLAYER_HIT_RADIUS2 = PLAYER_HIT_RADIUS ** 2
 PLAYER_HIT_X = 0
 PLAYER_HIT_Y = 5
+PLAYER_LIVES = 3
+PLAYER_INVULNERABLE = 1.5
+PLAYER_RESPAWN_TIMER = 2.0
+PLAYER_SPAWN = [SCREEN_WIDTH_HALF, 150]
 
 # Weapon stuff
 PLAYER_GUN_OFFSET_LEFT = (-8, 11)
@@ -167,14 +172,29 @@ class Player(pyglet.sprite.Sprite):
 	def __init__(self):
 		super().__init__(ship_image) #, batch = BATCH)
 		self.moving = [0, 0] # move x, y
-		self.x = SCREEN_WIDTH_HALF
-		self.y = 48
+		self.x = PLAYER_SPAWN[0]
+		self.y = PLAYER_SPAWN[1]
 		self.shooting = False
 		self.speed_multi = 1.0
 		self.btimer = 0
 		self.power_level = 3
+		self.dead = False
+		self.lives = PLAYER_LIVES
+		self.invunerable = PLAYER_INVULNERABLE
+		self.respawn_timer = PLAYER_RESPAWN_TIMER
 
 	def update(self, dt):
+		if self.dead:
+			self.respawn_timer -= dt
+			if self.respawn_timer <= 0:
+				self.dead = False
+				self.invunerable = PLAYER_INVULNERABLE
+				self.x = PLAYER_SPAWN[0]
+				self.y = PLAYER_SPAWN[1]
+				self.visible = True
+
+			return				
+		self.invunerable -= dt
 		# Terrible movement code
 		if self.moving[0] != 0:
 			self.x += self.moving[0] * PLAYER_MOVE_SPEED * self.speed_multi * dt
@@ -187,6 +207,18 @@ class Player(pyglet.sprite.Sprite):
 			if self.btimer <= 0:
 				self.btimer = PLAYER_FIRE_RATE
 				fire_weapon[min(self.power_level, len(fire_weapon) - 1)](self)
+
+	def death(self):
+		self.visible = False
+		MISC_LIST.append(Explode(self.x, self.y))
+		if self.lives == 0:
+			global GAME_OVER
+			GAME_OVER = True
+			return
+		self.dead = True
+		self.lives-= 1
+		self.respawn_timer = PLAYER_RESPAWN_TIMER
+
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
@@ -481,17 +513,34 @@ WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()
 
 # Always with the labels
-DEBUG_LABEL = pyglet.text.Label('ffff', 'Courier New', 14.0,
+DEBUG_LABEL = pyglet.text.Label('DEBUGGEROO', 'Courier New', 14.0,
 						True, False, (255, 150, 50, 255),
 						5, SCREEN_HEIGHT - 5, SCREEN_WIDTH - 10,
 						anchor_y = 'top', multiline = True)
 
+# Score label on other side
+SCORE_LABEL = pyglet.text.Label('SCORESTUFFS', 'Courier New', 20.0,
+						True, False, (150, 130, 255, 255),
+						SCREEN_WIDTH - 5, SCREEN_HEIGHT - 5, SCREEN_WIDTH - 10, 100,
+						'right', 'top', 'right', True)
+
+# Center label
+CENTER_LABEL = pyglet.text.Label('', 'Comic Sans MS', 40.0,
+								False, False, (255, 255, 255, 255),
+								SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, SCREEN_WIDTH, 200,
+								'center', 'center','center', multiline = True, batch = BATCH)
+
 def update_debug_label(dt):
 	DEBUG_LABEL.text = "FPS: {:.2f} (dt:{:.5f})".format(pyglet.clock.get_fps(), dt)
-	DEBUG_LABEL.text += "\nPlayer {:.1f}, {:.1f} |Bullets: {}".format(PLAYER.x, PLAYER.y, len(PLAYER_BULLET_LIST))
+	DEBUG_LABEL.text += "\nPlayer {:.1f}, {:.1f} |Bullets: {} |D: {}".format(PLAYER.x, PLAYER.y, len(PLAYER_BULLET_LIST), PLAYER.dead)
 	DEBUG_LABEL.text += "\nEnemies: {} |Bullets: {}".format(len(ENEMY_LIST), len(ENEMY_BULLET_LIST))
 
+def update_score_label():
+	SCORE_LABEL.text = "Score: {}\nGuys: {}".format(0, PLAYER.lives)
+
+
 def player_collision_tick(dt):
+	if PLAYER.dead or PLAYER.invunerable > 0: return
 	px = PLAYER.x + PLAYER_HIT_X
 	py = PLAYER.y + PLAYER_HIT_Y
 	for b in ENEMY_BULLET_LIST:
@@ -500,7 +549,9 @@ def player_collision_tick(dt):
 		# Check radii
 		if dx**2 + dy**2 < PLAYER_HIT_RADIUS2 + ENEMY_BULLET_RADIUS2:
 			print("DEAD PLAYER")
+			PLAYER.death()
 			b.garbage = True
+			update_score_label()
 
 	for e in MISC_LIST:
 		if issubclass(e.__class__, PowerUp):
@@ -565,10 +616,15 @@ def on_draw():
 	WINDOW.clear()
 	PLAYER.draw()
 	BATCH.draw()
+	update_score_label()
 	DEBUG_LABEL.draw()
+	SCORE_LABEL.draw()
 
 # Set everything up
 def game_setup():
+	pass
+
+def game_over():
 	pass
 
 # Update a list func
@@ -587,7 +643,10 @@ def game_update(dt):
 	global GAME_TIMER
 	GAME_TIMER += dt
 
-	PLAYER.update(dt)
+	if GAME_OVER:
+		CENTER_LABEL.text = "Unacceptable.\nYou have failed."
+	else:
+		PLAYER.update(dt)
 	TEST_LEVEL.update(dt)
 
 	update_list(PLAYER_BULLET_LIST, dt)

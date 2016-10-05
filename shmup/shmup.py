@@ -52,6 +52,8 @@ PLAYER_DIAGBULLET_RADIUS2 = PLAYER_DIAGBULLET_RADIUS ** 2
 # Enemy settings
 ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
 WAVE_SPAWN_WAIT = 0.01 # 3.0 # How long between waves
+WAVE_SPAWN_Y = SCREEN_HEIGHT + 32
+START_SPAWN_WAIT = 3.0
 
 ENEMY_BULLET_SPEED = 250.0
 ENEMY_BULLET_RADIUS = 6
@@ -83,7 +85,7 @@ ENEMY4_SPREAD = 4.0
 ENEMY4_SPREAD_OFF = (ENEMY4_SPREAD * (ENEMY4_BULLETS - 1)) / 2
 
 # Powerup settings
-POWERUP_MOVE_SPEED = 175.0
+POWERUP_MOVE_SPEED = 150.0
 POWERUP_MOVE_TIMER = 0.8
 POWERUP_RADIUS = 32
 POWERUP_RADIUS2 = POWERUP_RADIUS ** 2
@@ -177,7 +179,7 @@ class Player(pyglet.sprite.Sprite):
 		self.shooting = False
 		self.speed_multi = 1.0
 		self.btimer = 0
-		self.power_level = 3
+		self.power_level = 0
 		self.dead = False
 		self.lives = PLAYER_LIVES
 		self.invunerable = PLAYER_INVULNERABLE
@@ -428,58 +430,58 @@ class EnemyAims(Enemy):
 		self.weapon.angle_func = lambda t: get_dir(self.x, self.y, PLAYER.x, PLAYER.y) - ENEMY4_SPREAD_OFF
 	
 	def update(self, dt):
-		self.y -= ENEMY4_SPEED * dt
+		super().update(dt)
+		if self.garbage: return
 		# self.weapon.base_angle = get_dir(self.x, self.y, PLAYER.x, PLAYER.y)
 		self.weapon.update(dt)
 		
 		
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
-	def __init__(self, enemy_list, x_list, time_list):
+	def __init__(self, enemy_list, x_list, y_list, timer = WAVE_SPAWN_WAIT):
 		self.enemy_list = enemy_list # List of enemy types to spawn
 		self.x_list = x_list # List of x locations to spawn at
-		self.time_list = time_list # List of times between spawns
-		self.timer = self.time_list.pop(0) # Grab first time length
-		self.finished = False
+		self.y_list = y_list # List of y locations to spawn at
+		self.timer = timer
 
-	def update(self, dt):
-		self.timer -= dt
-		while self.timer <= 0:
-			etype = self.enemy_list.pop(0)
-			ENEMY_LIST.append(etype(self.x_list.pop(0), SCREEN_HEIGHT + 32)) # Spawn
-			if len(self.time_list) == 0: # If on last one we're finished
-				self.finished = True
-				self.timer = 999.9
-			else:
-				self.timer = self.time_list.pop(0)
+	def spawn(self):
+		wave = []
+		for etype, x, y in zip(self.enemy_list, self.x_list, self.y_list):
+			wave.append(etype(x, WAVE_SPAWN_Y + y))
+		return wave
 
 class LevelPattern():
 	"""Container and timer for executing enemy pattern spawns"""
 	def __init__(self, patterns):
 		self.patterns = patterns # List of EnemyPattern instances
-		self.timer = WAVE_SPAWN_WAIT # Time between waves
-		self.spawning = False
+		self.timer = START_SPAWN_WAIT # Time between waves
+		self.waiting = True
 		self.active = None # Active pattern
 		self.last = False
+		self.waves = []
 
 	def update(self, dt):
-		if self.spawning:
-			self.active.update(dt)
-			if self.active.finished:
-				self.spawning = False
-				self.active = None
-			else:
-				return
+		self.timer -= dt
 		if self.timer <= 0:
-			if self.last: return
-			self.active = self.patterns.pop(0)
-			if len(self.patterns) == 0:
-				self.last = True
-			self.spawning = True
-			self.timer = WAVE_SPAWN_WAIT
-			print("{} waves left".format(len(self.patterns)))
-		else:
-			self.timer -= dt
+			if self.last:
+				pass
+			else:
+				pattern = self.patterns.pop(0)
+				if len(self.patterns) == 0:
+					self.last = True
+				self.waiting = False
+				self.waves.append(pattern.spawn())
+				self.timer = pattern.timer
+		i = 0
+		while i < len(self.waves):
+			w = self.waves[i]
+			if len(w) == 0:
+				self.waves.pop(i)
+				MISC_LIST.append(PowerUp(SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF))
+				continue
+			else:
+				update_list(w, dt)
+				i += 1
 		
 class Explode(pyglet.sprite.Sprite):
 	"""Stationary explosion"""
@@ -497,20 +499,37 @@ class Explode(pyglet.sprite.Sprite):
 		self.garbage = True
 		self.visible = False
 
-		
+def triangle_formation(base, x, y, x_offset, y_offset, flip = False):
+	x_list = []
+	y_list = []
+	layer = base
+	while layer > 0:
+		for i in range(layer):
+			x_list.append(x - (0.5 * (layer - 1) * x_offset) + x_offset * i)
+			y_list.append(y + (base - layer if flip else layer) * y_offset)
+		layer -= 1
+	return x_list, y_list
 
-WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
-WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
-WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
-WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
-WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], [1.0] * 12)
-WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
-WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
+tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96)
 
-TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
+# Level 
+WAVE_MOVE_TRI = EnemyPattern([Enemy] * len(tri_4_x), tri_4_x, tri_4_y, 8.0)
+
+# WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
+# WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
+# WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
+# WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
+# WAVE_3 = EnemyPattern([Enemy, EnemyShoots] * 6, [64 + i*42 for i in range(12)], [1.0] * 12)
+# WAVE_4 = EnemyPattern([Enemy, EnemyShoots] * 6, [SCREEN_WIDTH - 64 - i*42 for i in range(12)], [1.0] * 12)
+# WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
+
+# TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
+TEST_LEVEL = LevelPattern([WAVE_MOVE_TRI, WAVE_MOVE_TRI, WAVE_MOVE_TRI, WAVE_MOVE_TRI])
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()
+
+CURRENT_LEVEL = TEST_LEVEL
 
 # Always with the labels
 DEBUG_LABEL = pyglet.text.Label('DEBUGGEROO', 'Courier New', 14.0,
@@ -567,14 +586,16 @@ def player_collision_tick(dt):
 
 
 def enemy_collision_tick(dt):
-	for e in ENEMY_LIST:
-		for b in PLAYER_BULLET_LIST:
-			if b.garbage: continue
-			cx = min(max(b.x, e.x - e.box[0]), e.x + e.box[0])
-			cy = min(max(b.y, e.y - e.box[1]), e.y + e.box[1])
-			if (cx - b.x)**2 + (cy - b.y)**2 < PLAYER_BULLET_RADIUS2:
-				e.impact(b)
-				b.garbage = True
+	for w in CURRENT_LEVEL.waves:
+		for e in w:
+			for b in PLAYER_BULLET_LIST:
+				if b.garbage: continue
+				cx = min(max(b.x, e.x - e.box[0]), e.x + e.box[0])
+				cy = min(max(b.y, e.y - e.box[1]), e.y + e.box[1])
+				if (cx - b.x)**2 + (cy - b.y)**2 < PLAYER_BULLET_RADIUS2:
+					e.impact(b)
+					b.garbage = True
+		
 
 
 # Controls implemented
@@ -650,7 +671,7 @@ def game_update(dt):
 	TEST_LEVEL.update(dt)
 
 	update_list(PLAYER_BULLET_LIST, dt)
-	update_list(ENEMY_LIST, dt)
+	# update_list(ENEMY_LIST, dt)
 	update_list(ENEMY_BULLET_LIST, dt)
 	update_list(MISC_LIST, dt)
 

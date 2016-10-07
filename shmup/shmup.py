@@ -345,12 +345,14 @@ class Enemy(pyglet.sprite.Sprite):
 		self.y_speed_func = lambda t: 0
 		self.health = ENEMY1_HEALTH
 		self.box = [image.width // 2, image.height // 2]
+		self.offscreen = False
 
 	def update(self, dt):
 		# Go down
 		self.x += (self.base_x_speed + self.x_speed_func(GAME_TIMER)) * dt
 		self.y += (self.base_y_speed + self.y_speed_func(GAME_TIMER)) * dt
 		if self.y <= ENEMY_GARBAGE_BORDER:
+			self.offscreen = True
 			self.garbage = True
 
 	def impact(self, bullet):
@@ -459,6 +461,7 @@ class LevelPattern():
 		self.active = None # Active pattern
 		self.last = False
 		self.waves = []
+		self.powerup = []
 
 	def update(self, dt):
 		self.timer -= dt
@@ -471,16 +474,29 @@ class LevelPattern():
 					self.last = True
 				self.waiting = False
 				self.waves.append(pattern.spawn())
+				self.powerup.append(True)
 				self.timer = pattern.timer
 		i = 0
+		# Jesus what a mess
 		while i < len(self.waves):
 			w = self.waves[i]
 			if len(w) == 0:
 				self.waves.pop(i)
-				MISC_LIST.append(PowerUp(SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF))
+				if self.powerup.pop(i):
+					MISC_LIST.append(PowerUp(SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF))
 				continue
 			else:
-				update_list(w, dt)
+				ii = 0
+				while ii < len(w):
+					obj = w[ii]
+					if obj.garbage:
+						# if enemy died from being offscreen no powerup is spawned
+						if obj.offscreen:
+							self.powerup[i] = False
+						w.pop(ii)
+					else:
+						obj.update(dt)
+						ii += 1
 				i += 1
 		
 class Explode(pyglet.sprite.Sprite):
@@ -499,6 +515,7 @@ class Explode(pyglet.sprite.Sprite):
 		self.garbage = True
 		self.visible = False
 
+# Helpers for making enemy formations
 def triangle_formation(base, x, y, x_offset, y_offset, flip = False):
 	x_list = []
 	y_list = []
@@ -510,10 +527,22 @@ def triangle_formation(base, x, y, x_offset, y_offset, flip = False):
 		layer -= 1
 	return x_list, y_list
 
+def rectangle_formation(width, height, x, y, x_offset, y_offset):
+	x_list = []
+	y_list = []
+	for h in range(height):
+		for w in range(width):
+			x_list.append(x - (width - 1) * x_offset * 0.5 + x_offset * w)
+			y_list.append(y + y_offset * h)
+	return x_list, y_list
+
+
 tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96)
+rect_4_x, rect_4_y = rectangle_formation(4, 4, SCREEN_WIDTH_HALF, 0, 64, 96)
 
 # Level 
 WAVE_MOVE_TRI = EnemyPattern([Enemy] * len(tri_4_x), tri_4_x, tri_4_y, 8.0)
+WAVE_MOVE_RECT = EnemyPattern([Enemy] * len(rect_4_x), rect_4_x, rect_4_y, 8.0)
 
 # WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 # WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
@@ -524,7 +553,7 @@ WAVE_MOVE_TRI = EnemyPattern([Enemy] * len(tri_4_x), tri_4_x, tri_4_y, 8.0)
 # WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
 # TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
-TEST_LEVEL = LevelPattern([WAVE_MOVE_TRI, WAVE_MOVE_TRI, WAVE_MOVE_TRI, WAVE_MOVE_TRI])
+TEST_LEVEL = LevelPattern([WAVE_MOVE_RECT, WAVE_MOVE_TRI, WAVE_MOVE_RECT, WAVE_MOVE_TRI])
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()

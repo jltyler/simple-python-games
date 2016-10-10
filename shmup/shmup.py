@@ -341,16 +341,18 @@ class Enemy(pyglet.sprite.Sprite):
 		self.garbage = False
 		self.base_x_speed = 0
 		self.base_y_speed = ENEMY1_Y_SPEED
-		self.x_speed_func = lambda t: 0
-		self.y_speed_func = lambda t: 0
+		self.x_speed_func = lambda t, y: 0
+		self.y_speed_func = lambda t, y: 0
 		self.health = ENEMY1_HEALTH
 		self.box = [image.width // 2, image.height // 2]
 		self.offscreen = False
+		self.timer = 0
 
 	def update(self, dt):
 		# Go down
-		self.x += (self.base_x_speed + self.x_speed_func(GAME_TIMER)) * dt
-		self.y += (self.base_y_speed + self.y_speed_func(GAME_TIMER)) * dt
+		self.timer += dt
+		self.x += (self.base_x_speed + self.x_speed_func(self.timer, SCREEN_HEIGHT - self.y)) * dt
+		self.y += (self.base_y_speed + self.y_speed_func(self.timer, SCREEN_HEIGHT - self.y)) * dt
 		if self.y <= ENEMY_GARBAGE_BORDER:
 			self.offscreen = True
 			self.garbage = True
@@ -440,17 +442,30 @@ class EnemyAims(Enemy):
 		
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
-	def __init__(self, enemy_list, x_list, y_list, timer = WAVE_SPAWN_WAIT):
+	def __init__(self, enemy_list, x_list, y_list, x_func_list, timer = WAVE_SPAWN_WAIT):
+		biggest = max(len(enemy_list), len(x_list), len(y_list), len(x_func_list))
 		self.enemy_list = enemy_list # List of enemy types to spawn
+		self.fill(self.enemy_list, biggest)
 		self.x_list = x_list # List of x locations to spawn at
+		self.fill(self.x_list, biggest)
 		self.y_list = y_list # List of y locations to spawn at
+		self.fill(self.y_list, biggest)
+		self.x_func_list = x_func_list
+		self.fill(self.x_func_list, biggest)
 		self.timer = timer
 
 	def spawn(self):
 		wave = []
-		for etype, x, y in zip(self.enemy_list, self.x_list, self.y_list):
-			wave.append(etype(x, WAVE_SPAWN_Y + y))
+		for etype, x, y, x_func in zip(self.enemy_list, self.x_list, self.y_list, self.x_func_list):
+			enemy = etype(x, WAVE_SPAWN_Y + y)
+			enemy.x_speed_func = x_func
+			wave.append(enemy)
 		return wave
+
+	def fill(self, flist, length):
+		# If list is too short: populate with duplicates of the last item
+		while len(flist) < length:
+			flist.append(flist[len(flist) - 1])
 
 class LevelPattern():
 	"""Container and timer for executing enemy pattern spawns"""
@@ -541,8 +556,8 @@ tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96)
 rect_4_x, rect_4_y = rectangle_formation(4, 4, SCREEN_WIDTH_HALF, 0, 64, 96)
 
 # Level 
-WAVE_MOVE_TRI = EnemyPattern([Enemy] * len(tri_4_x), tri_4_x, tri_4_y, 8.0)
-WAVE_MOVE_RECT = EnemyPattern([Enemy] * len(rect_4_x), rect_4_x, rect_4_y, 8.0)
+WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 8.0)
+WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 8.0)
 
 # WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 # WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])

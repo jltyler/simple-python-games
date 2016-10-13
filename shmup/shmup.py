@@ -53,7 +53,7 @@ PLAYER_DIAGBULLET_RADIUS2 = PLAYER_DIAGBULLET_RADIUS ** 2
 ENEMY_GARBAGE_BORDER = -300 # if enemy.y < this_value: enemy.garbage = True
 WAVE_SPAWN_WAIT = 0.01 # 3.0 # How long between waves
 WAVE_SPAWN_Y = SCREEN_HEIGHT + 32
-START_SPAWN_WAIT = 3.0
+START_SPAWN_WAIT = 0.1 # 3.0
 
 ENEMY_BULLET_SPEED = 250.0
 ENEMY_BULLET_RADIUS = 6
@@ -83,6 +83,18 @@ ENEMY4_FIRE_RATE = 0.8
 ENEMY4_BULLETS = 3
 ENEMY4_SPREAD = 4.0
 ENEMY4_SPREAD_OFF = (ENEMY4_SPREAD * (ENEMY4_BULLETS - 1)) / 2
+
+# Boss settings
+BOSS_INTRO_SPEED = 720 # 90
+BOSS_INTRO_TIME = 0.5 # 4.0
+
+BOSS_MAIN_RADIUS = 48
+BOSS_MAIN_RADIUS2 = BOSS_MAIN_RADIUS ** 2
+
+BOSS_X_RANGE_S1 = 100
+BOSS_WEAPON_WAIT_S1 = 1.0 # 4.0
+BOSS_WEAPON_BURST_S1 = 3.5 # 3.5
+
 
 # Powerup settings
 POWERUP_MOVE_SPEED = 150.0
@@ -139,6 +151,8 @@ enemy_image = prepare_image("img/enemy.png")
 enemy_shooter_image = prepare_image("img/enemy_shoot.png")
 enemy_stop_image = prepare_image("img/enemy_stop.png")
 enemy_aim_image = prepare_image("img/enemy_aim.png")
+boss_image = prepare_image("img/boss_wip.png")
+boss_mini_image = prepare_image("img/boss_mini.png")
 
 powerup_anim, powerup_sheet = prepare_anim("img/powerup1.png", 1, 8, 0.125)
 explode64_anim, explode64_sheet = prepare_anim("img/explode64.png", 1, 8, 0.04)
@@ -287,12 +301,16 @@ class PowerUp(pyglet.sprite.Sprite):
 
 class EnemyBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by enemy. Travels in a straight line."""
-	def __init__(self, x, y, speed, angle):
+	def __init__(self, x, y, speed, angle, vector = None):
 		super().__init__(bullet_image, batch = BATCH)
 		self.x = x
 		self.y = y
-		self.speed_x = math.cos(math.radians(angle)) * speed
-		self.speed_y = math.sin(math.radians(angle)) * speed
+		if vector == None:
+			self.speed_x = math.cos(math.radians(angle)) * speed
+			self.speed_y = math.sin(math.radians(angle)) * speed
+		else:
+			self.speed_x = vector[0]
+			self.speed_y = vector[1]
 		self.garbage = False
 
 	def update(self, dt):
@@ -305,24 +323,31 @@ class EnemyBullet(pyglet.sprite.Sprite):
 
 class Spawner():
 	"""Spawns bullets with a pattern"""
-	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, angle_offset = 15):
+	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, angle_offset = 15, x_scale = 1.0, y_scale = 1.0):
 		self.attached = attached
 		self.base_angle = base_angle
 		self.fire_rate = fire_rate
 		self.base_speed = base_speed
 		self.bullets = bullets
 		self.angle_offset = angle_offset
+		self.x_scale = x_scale
+		self.y_scale = y_scale
 		self.btimer = fire_rate
-		self.speed_func = lambda t: 0
+		self.speed_func = lambda t, b: 0
 		self.angle_func = lambda t: 0
 		self.active = True
 		self.timer = 0.0
+		self.x_offset = 0
+		self.y_offset = 0
 
 	def spawn(self, timer):
-		speed = self.base_speed + abs(self.speed_func(timer))
 		angle = self.base_angle + self.angle_func(timer)
 		for i in range(self.bullets):
-			ENEMY_BULLET_LIST.append(EnemyBullet(self.attached.x, self.attached.y, speed, angle + i * self.angle_offset))
+			speed = self.base_speed + abs(self.speed_func(timer, i))
+			i_angle = angle + i * self.angle_offset
+			i_x = math.cos(i_angle) * speed * self.x_scale
+			i_y = math.sin(i_angle) * speed * self.y_scale
+			ENEMY_BULLET_LIST.append(EnemyBullet(self.attached.x + self.x_offset, self.attached.y + self.y_offset, 0, 0, [i_x, i_y]))
 
 	def update(self, dt):
 		if not self.active: return
@@ -351,8 +376,8 @@ class Enemy(pyglet.sprite.Sprite):
 	def update(self, dt):
 		# Go down
 		self.timer += dt
-		self.x += (self.base_x_speed + self.x_speed_func(self.timer, SCREEN_HEIGHT - self.y)) * dt
-		self.y += (self.base_y_speed + self.y_speed_func(self.timer, SCREEN_HEIGHT - self.y)) * dt
+		self.x += (self.base_x_speed + self.x_speed_func(self.timer, max(0, SCREEN_HEIGHT - self.y))) * dt
+		self.y += (self.base_y_speed + self.y_speed_func(self.timer, max(0, SCREEN_HEIGHT - self.y))) * dt
 		if self.y <= ENEMY_GARBAGE_BORDER:
 			self.offscreen = True
 			self.garbage = True
@@ -438,8 +463,89 @@ class EnemyAims(Enemy):
 		if self.garbage: return
 		# self.weapon.base_angle = get_dir(self.x, self.y, PLAYER.x, PLAYER.y)
 		self.weapon.update(dt)
-		
-		
+	
+class Boss(pyglet.sprite.Sprite):
+	"""Big ol blastro"""
+	def __init__(self):
+		super().__init__(boss_image, batch = BATCH)
+		self.x = SCREEN_WIDTH_HALF
+		self.y = SCREEN_HEIGHT + 200
+		self.stage = 0
+		self.health = 1000
+		self.timer = 0
+		self.update_stage = [self.update_s0, self.update_s1, self.update_s2]
+		self.weapons = [0]
+
+		# Weapon sets for stage 1
+		weapons_s1 = []
+
+		weapon_a = Spawner(self, 0, 0.05, ENEMY_BULLET_SPEED, 2, math.pi)
+		weapon_a.angle_func = lambda t: t * 3
+		weapon_a.x_offset = -60
+		weapon_a.y_offset = 30
+		weapon_b = Spawner(self, 0, 0.05, ENEMY_BULLET_SPEED, 2, math.pi, -1)
+		weapon_b.angle_func = lambda t: t * 3
+		weapon_b.x_offset = 60
+		weapon_b.y_offset = 30
+		weapons_s1.append([weapon_a, weapon_b])
+
+		weapon_a = Spawner(self, math.radians(270), 0.3, ENEMY_BULLET_SPEED, 4, 0)
+		weapon_a.angle_func = lambda t: 0.2 * math.sin(t * 3)
+		weapon_a.speed_func = lambda t, b: b * 10
+		weapon_a.x_offset = -60
+		weapon_a.y_offset = 30
+		weapon_b = Spawner(self, math.radians(270), 0.3, ENEMY_BULLET_SPEED, 4, 0, -1)
+		weapon_b.angle_func = lambda t: 0.2 * math.sin(t * 3)
+		weapon_b.speed_func = lambda t, b: b * 10
+		weapon_b.x_offset = 60
+		weapon_b.y_offset = 30
+		weapons_s1.append([weapon_a, weapon_b])
+
+		weapon_a = Spawner(self, math.radians(270), 0.2, ENEMY_BULLET_SPEED, 72, math.radians(20))
+		weapon_a.angle_func = lambda t: t * .2
+		weapon_a.speed_func = lambda t, b: (b+1) // 18 * 8
+		weapon_a.x_offset = 0
+		weapon_a.y_offset = 0
+		weapons_s1.append([weapon_a])
+
+		# Stage 2 weapons
+
+
+		self.weapons.append(weapons_s1)
+		self.weapon_timer = BOSS_WEAPON_WAIT_S1
+		self.firing = False
+		self.active = None
+
+	def update(self, dt):
+		self.timer += dt
+		self.weapon_timer -= dt
+		self.update_stage[self.stage](dt)
+
+	def impact(self, bullet):
+		self.health -= bullet.damage
+
+	def next_stage(self):
+		self.stage += 1
+		self.timer = 0
+
+	def update_s0(self, dt):
+		self.y -= BOSS_INTRO_SPEED * dt
+		if self.timer >= BOSS_INTRO_TIME:
+			self.next_stage()
+
+	def update_s1(self, dt):
+		self.x = SCREEN_WIDTH_HALF + ( BOSS_X_RANGE_S1 * math.sin(self.timer) )
+		if self.weapon_timer <= 0:
+			self.weapon_timer = BOSS_WEAPON_WAIT_S1 if self.firing else BOSS_WEAPON_BURST_S1
+			self.firing = not self.firing
+			self.active = random.choice(self.weapons[self.stage])
+		if self.firing:
+			for w in self.active:
+				w.update(dt)
+
+	def update_s2(self, dt):
+		pass
+
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
 	def __init__(self, enemy_list, x_list, y_list, x_func_list, timer = WAVE_SPAWN_WAIT):
@@ -469,7 +575,7 @@ class EnemyPattern():
 
 class LevelPattern():
 	"""Container and timer for executing enemy pattern spawns"""
-	def __init__(self, patterns):
+	def __init__(self, patterns, boss):
 		self.patterns = patterns # List of EnemyPattern instances
 		self.timer = START_SPAWN_WAIT # Time between waves
 		self.waiting = True
@@ -477,12 +583,15 @@ class LevelPattern():
 		self.last = False
 		self.waves = []
 		self.powerup = []
+		self.boss_class = boss
+		self.boss = None
 
 	def update(self, dt):
 		self.timer -= dt
 		if self.timer <= 0:
 			if self.last:
-				pass
+				self.boss = self.boss_class()
+				self.timer = 999
 			else:
 				pattern = self.patterns.pop(0)
 				if len(self.patterns) == 0:
@@ -492,6 +601,8 @@ class LevelPattern():
 				self.powerup.append(True)
 				self.timer = pattern.timer
 		i = 0
+		if self.boss != None:
+			self.boss.update(dt)
 		# Jesus what a mess
 		while i < len(self.waves):
 			w = self.waves[i]
@@ -556,8 +667,9 @@ tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96)
 rect_4_x, rect_4_y = rectangle_formation(4, 4, SCREEN_WIDTH_HALF, 0, 64, 96)
 
 # Level 
-WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 8.0)
-WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 8.0)
+WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
+WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
+WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1)
 
 # WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 # WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
@@ -568,7 +680,7 @@ WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*mat
 # WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
 # TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
-TEST_LEVEL = LevelPattern([WAVE_MOVE_RECT, WAVE_MOVE_TRI, WAVE_MOVE_RECT, WAVE_MOVE_TRI])
+TEST_LEVEL = LevelPattern([WAVE_SINGLE_ENEMY], Boss)
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()
@@ -639,6 +751,14 @@ def enemy_collision_tick(dt):
 				if (cx - b.x)**2 + (cy - b.y)**2 < PLAYER_BULLET_RADIUS2:
 					e.impact(b)
 					b.garbage = True
+	if CURRENT_LEVEL.boss != None:
+		boss = CURRENT_LEVEL.boss
+		for b in PLAYER_BULLET_LIST:
+			if b.garbage: continue
+			if (boss.x - b.x)**2 + (boss.y - b.y)**2 < PLAYER_BULLET_RADIUS2 + BOSS_MAIN_RADIUS2:
+				boss.impact(b)
+				b.garbage = True
+
 		
 
 

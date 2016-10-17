@@ -91,9 +91,21 @@ BOSS_INTRO_TIME = 0.5 # 4.0
 BOSS_MAIN_RADIUS = 48
 BOSS_MAIN_RADIUS2 = BOSS_MAIN_RADIUS ** 2
 
+BOSS_MINI_OFFSET_X = 63
+BOSS_MINI_OFFSET_Y = -21
+
+BOSS_HEALTH = 4000
+BOSS_HEALTH_THRESHOLD = [0, 3999, 500, 0] # Change stages at these health value
+
 BOSS_X_RANGE_S1 = 100
 BOSS_WEAPON_WAIT_S1 = 1.0 # 4.0
 BOSS_WEAPON_BURST_S1 = 3.5 # 3.5
+
+BOSS_X_RANGE_S2 = 250
+BOSS_WEAPON_WAIT_S2 = 0.67
+BOSS_WEAPON_BURST_S2 = 3.3
+BOSS_SPEED_S2 = 4.0
+
 
 
 # Powerup settings
@@ -193,7 +205,7 @@ class Player(pyglet.sprite.Sprite):
 		self.shooting = False
 		self.speed_multi = 1.0
 		self.btimer = 0
-		self.power_level = 0
+		self.power_level = 3
 		self.dead = False
 		self.lives = PLAYER_LIVES
 		self.invunerable = PLAYER_INVULNERABLE
@@ -323,30 +335,30 @@ class EnemyBullet(pyglet.sprite.Sprite):
 
 class Spawner():
 	"""Spawns bullets with a pattern"""
-	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, angle_offset = 15, x_scale = 1.0, y_scale = 1.0):
+	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, x_scale = 1.0, y_scale = 1.0):
 		self.attached = attached
 		self.base_angle = base_angle
 		self.fire_rate = fire_rate
 		self.base_speed = base_speed
 		self.bullets = bullets
-		self.angle_offset = angle_offset
 		self.x_scale = x_scale
 		self.y_scale = y_scale
 		self.btimer = fire_rate
 		self.speed_func = lambda t, b: 0
-		self.angle_func = lambda t: 0
+		self.angle_func = lambda t, b: 0
 		self.active = True
 		self.timer = 0.0
 		self.x_offset = 0
 		self.y_offset = 0
 
-	def spawn(self, timer):
-		angle = self.base_angle + self.angle_func(timer)
+	def spawn(self, timer=None):
+		if timer == None:
+			timer = self.timer
 		for i in range(self.bullets):
+			angle = self.base_angle + self.angle_func(timer, i)
 			speed = self.base_speed + abs(self.speed_func(timer, i))
-			i_angle = angle + i * self.angle_offset
-			i_x = math.cos(i_angle) * speed * self.x_scale
-			i_y = math.sin(i_angle) * speed * self.y_scale
+			i_x = math.cos(angle) * speed * self.x_scale
+			i_y = math.sin(angle) * speed * self.y_scale
 			ENEMY_BULLET_LIST.append(EnemyBullet(self.attached.x + self.x_offset, self.attached.y + self.y_offset, 0, 0, [i_x, i_y]))
 
 	def update(self, dt):
@@ -356,6 +368,14 @@ class Spawner():
 		if self.btimer <= 0:
 			self.spawn(self.timer)
 			self.btimer = self.fire_rate
+
+	def copy(self):
+		new_spawner = Spawner(self.attached, self.base_angle, self.fire_rate, self.base_speed, self.bullets, self.x_scale, self.y_scale)
+		new_spawner.speed_func = self.speed_func
+		new_spawner.angle_func = self.angle_func
+		new_spawner.x_offset = self.x_offset
+		new_spawner.y_offset = self.y_offset
+		return new_spawner
 
 class Enemy(pyglet.sprite.Sprite):
 	"""Basic enemy mover"""
@@ -464,6 +484,13 @@ class EnemyAims(Enemy):
 		# self.weapon.base_angle = get_dir(self.x, self.y, PLAYER.x, PLAYER.y)
 		self.weapon.update(dt)
 	
+class BossMini(pyglet.sprite.Sprite):
+	"""Mini dude that breaks off of boss"""
+	def __init__(self, arg):
+		super().__init__(boss_mini_image)
+		self.arg = arg
+		
+
 class Boss(pyglet.sprite.Sprite):
 	"""Big ol blastro"""
 	def __init__(self):
@@ -471,70 +498,95 @@ class Boss(pyglet.sprite.Sprite):
 		self.x = SCREEN_WIDTH_HALF
 		self.y = SCREEN_HEIGHT + 200
 		self.stage = 0
-		self.health = 1000
+		self.health = BOSS_HEALTH
 		self.timer = 0
 		self.update_stage = [self.update_s0, self.update_s1, self.update_s2]
 		self.weapons = [0]
 
+		# Mini-flyers
+		self.mini_left = pyglet.sprite.Sprite(boss_mini_image, batch = BATCH)
+		self.mini_right = pyglet.sprite.Sprite(boss_mini_image, batch = BATCH)
+
 		# Weapon sets for stage 1
 		weapons_s1 = []
 
-		weapon_a = Spawner(self, 0, 0.05, ENEMY_BULLET_SPEED, 2, math.pi)
-		weapon_a.angle_func = lambda t: t * 3
-		weapon_a.x_offset = -60
-		weapon_a.y_offset = 30
-		weapon_b = Spawner(self, 0, 0.05, ENEMY_BULLET_SPEED, 2, math.pi, -1)
-		weapon_b.angle_func = lambda t: t * 3
-		weapon_b.x_offset = 60
-		weapon_b.y_offset = 30
+		# Twin spinnies
+		weapon_a = Spawner(self, 0, 0.05, ENEMY_BULLET_SPEED, 2)
+		weapon_a.angle_func = lambda t, b: t * 3 + b * math.pi
+		weapon_a.x_offset = -BOSS_MINI_OFFSET_X
+		weapon_a.y_offset = BOSS_MINI_OFFSET_Y
+		weapon_b = weapon_a.copy() # Copy and mirror
+		weapon_b.x_offset *= -1
+		weapon_b.x_scale = -1
 		weapons_s1.append([weapon_a, weapon_b])
 
-		weapon_a = Spawner(self, math.radians(270), 0.3, ENEMY_BULLET_SPEED, 4, 0)
-		weapon_a.angle_func = lambda t: 0.2 * math.sin(t * 3)
+		# Forward salvos
+		weapon_a = Spawner(self, math.radians(270), 0.3, ENEMY_BULLET_SPEED, 4)
+		weapon_a.angle_func = lambda t, b: 0.2 * math.sin(t * 3)
 		weapon_a.speed_func = lambda t, b: b * 10
-		weapon_a.x_offset = -60
-		weapon_a.y_offset = 30
-		weapon_b = Spawner(self, math.radians(270), 0.3, ENEMY_BULLET_SPEED, 4, 0, -1)
-		weapon_b.angle_func = lambda t: 0.2 * math.sin(t * 3)
-		weapon_b.speed_func = lambda t, b: b * 10
-		weapon_b.x_offset = 60
-		weapon_b.y_offset = 30
+		weapon_a.x_offset = -BOSS_MINI_OFFSET_X
+		weapon_a.y_offset = BOSS_MINI_OFFSET_Y
+		weapon_b = weapon_a.copy()
+		weapon_b.x_offset *= -1
+		weapon_b.x_scale = -1
 		weapons_s1.append([weapon_a, weapon_b])
 
-		weapon_a = Spawner(self, math.radians(270), 0.2, ENEMY_BULLET_SPEED, 72, math.radians(20))
-		weapon_a.angle_func = lambda t: t * .2
+		# Center burst
+		weapon_a = Spawner(self, math.radians(270), 0.2, ENEMY_BULLET_SPEED, 72)
+		weapon_a.angle_func = lambda t, b: t * .2 + b * 0.349066
 		weapon_a.speed_func = lambda t, b: (b+1) // 18 * 8
-		weapon_a.x_offset = 0
-		weapon_a.y_offset = 0
 		weapons_s1.append([weapon_a])
 
-		# Stage 2 weapons
-
-
+		# Add to weapon array
 		self.weapons.append(weapons_s1)
+
+		# Stage 2 main weapons
+		weapons_s2 = []
+
+		# Center burst more gooder
+		weapon_a = Spawner(self, math.radians(270), 0.15, ENEMY_BULLET_SPEED, 72)
+		weapon_a.angle_func = lambda t, b: t * .3 + b * 0.349066
+		weapon_a.speed_func = lambda t, b: (b+1) // 18 * 12
+		weapons_s2.append([weapon_a])
+
+		# Add to weapon array
+		self.weapons.append(weapons_s2)
+
 		self.weapon_timer = BOSS_WEAPON_WAIT_S1
+		self.move_timer = 0
 		self.firing = False
 		self.active = None
+		self.move_target_x = SCREEN_WIDTH_HALF
 
 	def update(self, dt):
 		self.timer += dt
-		self.weapon_timer -= dt
 		self.update_stage[self.stage](dt)
 
 	def impact(self, bullet):
+		if self.stage == 0: return
 		self.health -= bullet.damage
+		if self.health < BOSS_HEALTH_THRESHOLD[self.stage]:
+			self.next_stage()
 
 	def next_stage(self):
 		self.stage += 1
 		self.timer = 0
+		if self.stage == 2:
+			self.move_target_x = self.x
+			self.weapon_timer = 0
 
 	def update_s0(self, dt):
 		self.y -= BOSS_INTRO_SPEED * dt
+		self.mini_left.set_position(self.x - BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.mini_right.set_position(self.x + BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
 		if self.timer >= BOSS_INTRO_TIME:
 			self.next_stage()
 
 	def update_s1(self, dt):
 		self.x = SCREEN_WIDTH_HALF + ( BOSS_X_RANGE_S1 * math.sin(self.timer) )
+		self.mini_left.set_position(self.x - BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.mini_right.set_position(self.x + BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.weapon_timer -= dt
 		if self.weapon_timer <= 0:
 			self.weapon_timer = BOSS_WEAPON_WAIT_S1 if self.firing else BOSS_WEAPON_BURST_S1
 			self.firing = not self.firing
@@ -544,7 +596,27 @@ class Boss(pyglet.sprite.Sprite):
 				w.update(dt)
 
 	def update_s2(self, dt):
-		pass
+		if abs(self.x - self.move_target_x) < 2:
+			if self.weapon_timer <= 0:
+				# Pick a new spot to move to
+				self.move_target_x = random.uniform(SCREEN_WIDTH_HALF - BOSS_X_RANGE_S2, SCREEN_WIDTH_HALF + BOSS_X_RANGE_S2)
+				self.move_diff = (self.move_target_x - self.x) * 0.5
+				self.move_half = self.move_target_x - self.move_diff
+				self.x_dir = math.copysign(1, self.move_diff)
+				print("Picking new spot: {}\n{}\n{}\n{}\n{}".format(self.x, self.move_target_x, self.move_diff, self.move_half, self.x_dir))
+				self.weapon_timer = BOSS_WEAPON_BURST_S2
+				self.active = random.choice(self.weapons[self.stage])
+			else:
+				self.weapon_timer -= dt
+				for w in self.active:
+					w.update(dt)
+		else:
+			self.x += min(50, max(5, abs(self.move_diff) - abs(self.move_half - self.x))) * BOSS_SPEED_S2 * dt * self.x_dir
+			# self.x += (self.move_diff - max(0.1, abs(self.move_half - self.x))) * BOSS_SPEED_S2 * dt * self.x_dir
+
+			
+
+
 
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
@@ -709,6 +781,9 @@ def update_debug_label(dt):
 	DEBUG_LABEL.text = "FPS: {:.2f} (dt:{:.5f})".format(pyglet.clock.get_fps(), dt)
 	DEBUG_LABEL.text += "\nPlayer {:.1f}, {:.1f} |Bullets: {} |D: {}".format(PLAYER.x, PLAYER.y, len(PLAYER_BULLET_LIST), PLAYER.dead)
 	DEBUG_LABEL.text += "\nEnemies: {} |Bullets: {}".format(len(ENEMY_LIST), len(ENEMY_BULLET_LIST))
+	if CURRENT_LEVEL.boss != None:
+		DEBUG_LABEL.text += "\nBoss: {:.2f}, {:.2f} H: {} ({}) {}".format(CURRENT_LEVEL.boss.x, CURRENT_LEVEL.boss.y, CURRENT_LEVEL.boss.health, CURRENT_LEVEL.boss.stage, CURRENT_LEVEL.boss.weapon_timer)
+
 
 def update_score_label():
 	SCORE_LABEL.text = "Score: {}\nGuys: {}".format(0, PLAYER.lives)

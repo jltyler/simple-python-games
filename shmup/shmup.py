@@ -11,6 +11,11 @@ DEBUG_PRINTOUT = False
 GAME_TIMER = 0
 GAME_OVER = False
 
+# Help for other functions
+HALF_PI = math.pi * 0.5
+ONE_HALF_PI = math.pi + HALF_PI
+TWO_PI = math.pi * 2
+
 # Player settings
 PLAYER_MOVE_SPEED = 250.0
 PLAYER_DIAGONAL_MOD = 0.70710678118 # root of 2 over 2 (not used yet)
@@ -97,6 +102,16 @@ BOSS_MINI_OFFSET_Y = -21
 BOSS_HEALTH = 4000
 BOSS_HEALTH_THRESHOLD = [0, 3999, 500, 0] # Change stages at these health value
 
+BOSS_MINI_HEALTH = 800
+BOSS_MINI_LAUNCH_SPEED = 100
+BOSS_MINI_LAUNCH_TIME = 1.5
+BOSS_MINI_MOVE_TIMER = 0.6
+BOSS_MINI_MOVE_TIMER_VARIANCE = 0.3
+BOSS_MINI_MOVE_X_THRESHOLD = [SCREEN_WIDTH_HALF // 2]
+BOSS_MINI_MOVE_Y_THRESHOLD = [SCREEN_HEIGHT_HALF - 100, SCREEN_HEIGHT_HALF + 300]
+BOSS_MINI_MOVE_SPEED = 120
+BOSS_MINI_FIRE_TIME = 0.9
+
 BOSS_X_RANGE_S1 = 100
 BOSS_WEAPON_WAIT_S1 = 1.0 # 4.0
 BOSS_WEAPON_BURST_S1 = 3.5 # 3.5
@@ -105,7 +120,6 @@ BOSS_X_RANGE_S2 = 250
 BOSS_WEAPON_WAIT_S2 = 0.67
 BOSS_WEAPON_BURST_S2 = 3.3
 BOSS_SPEED_S2 = 4.0
-
 
 
 # Powerup settings
@@ -335,7 +349,7 @@ class EnemyBullet(pyglet.sprite.Sprite):
 
 class Spawner():
 	"""Spawns bullets with a pattern"""
-	def __init__(self, attached, base_angle = 270, fire_rate = 0.25, base_speed = 350, bullets = 1, x_scale = 1.0, y_scale = 1.0):
+	def __init__(self, attached, base_angle = 0, fire_rate = 0.25, base_speed = ENEMY_BULLET_SPEED, bullets = 1, x_scale = 1.0, y_scale = 1.0):
 		self.attached = attached
 		self.base_angle = base_angle
 		self.fire_rate = fire_rate
@@ -351,9 +365,7 @@ class Spawner():
 		self.x_offset = 0
 		self.y_offset = 0
 
-	def spawn(self, timer=None):
-		if timer == None:
-			timer = self.timer
+	def spawn(self, timer):
 		for i in range(self.bullets):
 			angle = self.base_angle + self.angle_func(timer, i)
 			speed = self.base_speed + abs(self.speed_func(timer, i))
@@ -458,17 +470,28 @@ class EnemyStops(Enemy):
 				self.y = self.target_y
 
 def get_dir(x1, y1, x2, y2):
-		dx = x2 - x1
-		dy = y2 - y1
-		# lets not divide by zero now
-		if dy == 0:
-			return 0.0 if dx >= 0 else 180.0
-		elif dx == 0:
-			return 90.0 if dy >= 0 else 270.0
-		# get angle and convert to degrees
-		raw_deg = math.degrees(math.atan2(dy , dx))
-		# math.atan2 gives us negatives so we convert to between 0 and 360
-		return raw_deg if raw_deg >= 0 else (360+raw_deg)
+	dx = x2 - x1
+	dy = y2 - y1
+	# lets not divide by zero now
+	if dy == 0:
+		return 0.0 if dx >= 0 else 180.0
+	elif dx == 0:
+		return 90.0 if dy >= 0 else 270.0
+	# get angle and convert to degrees
+	raw_deg = math.degrees(math.atan2(dy , dx))
+	# math.atan2 gives us negatives so we convert to between 0 and 360
+	return raw_deg if raw_deg >= 0 else (360+raw_deg)
+
+def get_dir_rad(x1, y1, x2, y2):
+	dx = x2 - x1
+	dy = y2 - y1
+	# lets not divide by zero now
+	if dy == 0:
+		return 0.0 if dx >= 0 else math.pi
+	elif dx == 0:
+		return HALF_PI if dy >= 0 else ONE_HALF_PI
+	raw = math.atan2(dy, dx)
+	return raw if raw >= 0 else TWO_PI + raw
 
 class EnemyAims(Enemy):
 	"""Enemy that moves down like others but aims at the player when it fires it's weapon"""
@@ -476,19 +499,91 @@ class EnemyAims(Enemy):
 		super().__init__(x, y, enemy_aim_image)
 		self.weapon = Spawner(self, 0, ENEMY4_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY4_BULLETS, ENEMY4_SPREAD)
 		self.health = ENEMY4_HEALTH
-		self.weapon.angle_func = lambda t: get_dir(self.x, self.y, PLAYER.x, PLAYER.y) - ENEMY4_SPREAD_OFF
+		self.weapon.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y) - ENEMY4_SPREAD_OFF
 	
 	def update(self, dt):
 		super().update(dt)
 		if self.garbage: return
 		# self.weapon.base_angle = get_dir(self.x, self.y, PLAYER.x, PLAYER.y)
 		self.weapon.update(dt)
-	
-class BossMini(pyglet.sprite.Sprite):
-	"""Mini dude that breaks off of boss"""
-	def __init__(self, arg):
-		super().__init__(boss_mini_image)
-		self.arg = arg
+
+class BossMinion(pyglet.sprite.Sprite):
+	"""Mini flyer connected to boss n blasts shit yo"""
+	def __init__(self, left = False):
+		super().__init__(boss_mini_image, batch = BATCH)
+		self.health = BOSS_MINI_HEALTH
+		self.launching = True
+		self.timer = 0
+		self.left = left
+		Θ = math.radians(300)
+		self.launch_speed = [BOSS_MINI_LAUNCH_SPEED * math.cos(Θ), BOSS_MINI_LAUNCH_SPEED * math.sin(Θ)]
+		self.boundary = [
+		SCREEN_WIDTH_HALF, BOSS_MINI_MOVE_Y_THRESHOLD[0], 
+		SCREEN_WIDTH, BOSS_MINI_MOVE_Y_THRESHOLD[1]]
+		if self.left:
+			self.launch_speed[0] *= -1
+			self.boundary[0] = 0
+			self.boundary[2] = SCREEN_WIDTH_HALF
+		self.move_timer = 0
+		self.moves_left = 3
+		self.firing = False
+		self.weapons = []
+
+		weapon_a = Spawner(self, 0, 0.25, ENEMY_BULLET_SPEED, 10)
+		Θ = math.radians(36)
+		weapon_a.angle_func = lambda t, b: t + b * Θ
+		weapon_b = Spawner(self, 0, 0.25)
+		weapon_b.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y)
+
+
+		self.weapons.append([weapon_a, weapon_b])
+
+
+	def update(self, dt):
+		self.timer += dt
+		if self.launching:
+			self.x += self.launch_speed[0] * dt
+			self.y += self.launch_speed[1] * dt
+			if self.timer >= BOSS_MINI_LAUNCH_TIME: self.launching = False
+		else:
+			self.move_timer -= dt
+			if self.firing:
+				for w in self.active: w.update(dt)
+				if self.move_timer <= 0:
+					self.firing = False
+					self.move_timer = random.uniform(BOSS_MINI_MOVE_TIMER, BOSS_MINI_MOVE_TIMER + BOSS_MINI_MOVE_TIMER_VARIANCE)
+					self.moves_left = 3
+					self.new_direction()
+
+			if self.move_timer <= 0:
+				self.move_timer = random.uniform(BOSS_MINI_MOVE_TIMER, BOSS_MINI_MOVE_TIMER + BOSS_MINI_MOVE_TIMER_VARIANCE)
+				self.new_direction()
+				self.moves_left -= 1
+				if self.moves_left <= 0:
+					self.firing = True
+					self.move_timer = BOSS_MINI_FIRE_TIME
+					self.active = random.choice(self.weapons)
+					self.speed_x = 0
+					self.speed_y = 0
+			self.x += self.speed_x * dt
+			self.y += self.speed_y * dt
+
+	def new_direction(self):
+		Θ = random.uniform(0, TWO_PI)
+		self.speed_x = math.cos(Θ) * BOSS_MINI_MOVE_SPEED
+		self.speed_y = math.sin(Θ) * BOSS_MINI_MOVE_SPEED
+		if self.x < self.boundary[0]:
+			self.speed_x = math.copysign(self.speed_x, 1)
+		elif self.x > self.boundary[2]:
+			self.speed_x = math.copysign(self.speed_x, -1)
+		if self.y < self.boundary[1]:
+			self.speed_y = math.copysign(self.speed_y, 1)
+		elif self.y > self.boundary[3]:
+			self.speed_y = math.copysign(self.speed_y, -1)
+
+
+
+
 		
 
 class Boss(pyglet.sprite.Sprite):
@@ -503,11 +598,11 @@ class Boss(pyglet.sprite.Sprite):
 		self.update_stage = [self.update_s0, self.update_s1, self.update_s2]
 		self.weapons = [0]
 
-		# Mini-flyers
-		self.mini_left = pyglet.sprite.Sprite(boss_mini_image, batch = BATCH)
-		self.mini_right = pyglet.sprite.Sprite(boss_mini_image, batch = BATCH)
+		# Mini flyers
+		self.minion_l = BossMinion(True)
+		self.minion_r = BossMinion()
 
-		# Weapon sets for stage 1
+		# WEAPON SET 1
 		weapons_s1 = []
 
 		# Twin spinnies
@@ -531,7 +626,7 @@ class Boss(pyglet.sprite.Sprite):
 		weapon_b.x_scale = -1
 		weapons_s1.append([weapon_a, weapon_b])
 
-		# Center burst
+		# Sun burst
 		weapon_a = Spawner(self, math.radians(270), 0.2, ENEMY_BULLET_SPEED, 72)
 		weapon_a.angle_func = lambda t, b: t * .2 + b * 0.349066
 		weapon_a.speed_func = lambda t, b: (b+1) // 18 * 8
@@ -539,18 +634,26 @@ class Boss(pyglet.sprite.Sprite):
 
 		# Add to weapon array
 		self.weapons.append(weapons_s1)
+		# END WEAPON SET 1
 
-		# Stage 2 main weapons
+		# WEAPON SET 2
 		weapons_s2 = []
 
-		# Center burst more gooder
+		# Sun burster
 		weapon_a = Spawner(self, math.radians(270), 0.15, ENEMY_BULLET_SPEED, 72)
-		weapon_a.angle_func = lambda t, b: t * .3 + b * 0.349066
+		Θ = math.radians(20)
+		weapon_a.angle_func = lambda t, b: t * .3 + b * Θ
 		weapon_a.speed_func = lambda t, b: (b+1) // 18 * 12
 		weapons_s2.append([weapon_a])
 
-		# Add to weapon array
+		# Sin wave burst at player
+		weapon_a = Spawner(self, 0, 0.1, ENEMY_BULLET_SPEED, 5)
+		max_Θ = math.radians(20)
+		weapon_a.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y) + (b-2) * max_Θ * math.sin(t*3)
+		weapons_s2.append([weapon_a])
+
 		self.weapons.append(weapons_s2)
+		# END WEAPON SET 2
 
 		self.weapon_timer = BOSS_WEAPON_WAIT_S1
 		self.move_timer = 0
@@ -577,25 +680,28 @@ class Boss(pyglet.sprite.Sprite):
 
 	def update_s0(self, dt):
 		self.y -= BOSS_INTRO_SPEED * dt
-		self.mini_left.set_position(self.x - BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
-		self.mini_right.set_position(self.x + BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.minion_l.set_position(self.x - BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.minion_r.set_position(self.x + BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
 		if self.timer >= BOSS_INTRO_TIME:
 			self.next_stage()
 
 	def update_s1(self, dt):
 		self.x = SCREEN_WIDTH_HALF + ( BOSS_X_RANGE_S1 * math.sin(self.timer) )
-		self.mini_left.set_position(self.x - BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
-		self.mini_right.set_position(self.x + BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.minion_l.set_position(self.x - BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
+		self.minion_r.set_position(self.x + BOSS_MINI_OFFSET_X, self.y + BOSS_MINI_OFFSET_Y)
 		self.weapon_timer -= dt
 		if self.weapon_timer <= 0:
 			self.weapon_timer = BOSS_WEAPON_WAIT_S1 if self.firing else BOSS_WEAPON_BURST_S1
 			self.firing = not self.firing
 			self.active = random.choice(self.weapons[self.stage])
+			for a in self.active: a.timer = 0
 		if self.firing:
 			for w in self.active:
 				w.update(dt)
 
 	def update_s2(self, dt):
+		self.minion_l.update(dt)
+		self.minion_r.update(dt)
 		if abs(self.x - self.move_target_x) < 2:
 			if self.weapon_timer <= 0:
 				# Pick a new spot to move to
@@ -611,8 +717,9 @@ class Boss(pyglet.sprite.Sprite):
 				for w in self.active:
 					w.update(dt)
 		else:
-			self.x += min(50, max(5, abs(self.move_diff) - abs(self.move_half - self.x))) * BOSS_SPEED_S2 * dt * self.x_dir
-			# self.x += (self.move_diff - max(0.1, abs(self.move_half - self.x))) * BOSS_SPEED_S2 * dt * self.x_dir
+			self.x += min(50, max(5, abs(self.move_diff) - abs(self.move_half - self.x))) * BOSS_SPEED_S2 * self.x_dir * dt
+
+
 
 			
 

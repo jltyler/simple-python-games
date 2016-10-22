@@ -29,6 +29,10 @@ PLAYER_LIVES = 3
 PLAYER_INVULNERABLE = 1.5
 PLAYER_RESPAWN_TIMER = 2.0
 PLAYER_SPAWN = [SCREEN_WIDTH_HALF, 150]
+PLAYER_BOMBS = 2
+
+BOMB_NOFIRE_TIME = 1.5
+BOMB_TIMER = 0
 
 # Weapon stuff
 PLAYER_GUN_OFFSET_LEFT = (-8, 11)
@@ -144,6 +148,7 @@ KEY_RIGHT = pyglet.window.key.RIGHT
 KEY_SHOOT = pyglet.window.key.Z
 KEY_SLOW = pyglet.window.key.X
 KEY_CHEAT_POWERUP = pyglet.window.key.P
+KEY_BOMB_SCREEN = pyglet.window.key.C
 
 # ======== LOADING GRAPHICS ========
 # STEALING JOHN'S WORK AND NOT GIVING HIM CREDIT xDDDDD
@@ -182,6 +187,7 @@ boss_mini_image = prepare_image("img/boss_mini.png")
 
 powerup_anim, powerup_sheet = prepare_anim("img/powerup1.png", 1, 8, 0.125)
 explode64_anim, explode64_sheet = prepare_anim("img/explode64.png", 1, 8, 0.04)
+bullet_pop_anim, bullet_pop_sheet = prepare_anim("img/bullet_pop.png", 1, 8, 0.08)
 
 
 
@@ -224,6 +230,7 @@ class Player(pyglet.sprite.Sprite):
 		self.lives = PLAYER_LIVES
 		self.invunerable = PLAYER_INVULNERABLE
 		self.respawn_timer = PLAYER_RESPAWN_TIMER
+		self.bombs = PLAYER_BOMBS
 
 	def update(self, dt):
 		if self.dead:
@@ -253,13 +260,20 @@ class Player(pyglet.sprite.Sprite):
 	def death(self):
 		self.visible = False
 		MISC_LIST.append(Explode(self.x, self.y))
+		self.dead = True
 		if self.lives == 0:
 			global GAME_OVER
 			GAME_OVER = True
 			return
-		self.dead = True
 		self.lives-= 1
 		self.respawn_timer = PLAYER_RESPAWN_TIMER
+
+	def bomb_screen(self):
+		if self.bombs == 0: return
+		self.bombs -= 1
+		BOMB_TIMER = GAME_TIMER + BOMB_NOFIRE_TIME
+		for b in ENEMY_BULLET_LIST:
+			b.death()
 
 
 class PlayerBullet(pyglet.sprite.Sprite):
@@ -347,6 +361,11 @@ class EnemyBullet(pyglet.sprite.Sprite):
 			self.y > SCREEN_HEIGHT or self.y < 0):
 			self.garbage = True
 
+	def death(self):
+		self.garbage = True
+		MISC_LIST.append(Explode(self.x, self.y, bullet_pop_anim))
+
+
 class Spawner():
 	"""Spawns bullets with a pattern"""
 	def __init__(self, attached, base_angle = 0, fire_rate = 0.25, base_speed = ENEMY_BULLET_SPEED, bullets = 1, x_scale = 1.0, y_scale = 1.0):
@@ -366,6 +385,7 @@ class Spawner():
 		self.y_offset = 0
 
 	def spawn(self, timer):
+		if GAME_TIMER < BOMB_TIMER: return
 		for i in range(self.bullets):
 			angle = self.base_angle + self.angle_func(timer, i)
 			speed = self.base_speed + abs(self.speed_func(timer, i))
@@ -535,7 +555,6 @@ class BossMinion(pyglet.sprite.Sprite):
 		weapon_b = Spawner(self, 0, 0.25)
 		weapon_b.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y)
 
-
 		self.weapons.append([weapon_a, weapon_b])
 
 
@@ -581,10 +600,6 @@ class BossMinion(pyglet.sprite.Sprite):
 		elif self.y > self.boundary[3]:
 			self.speed_y = math.copysign(self.speed_y, -1)
 
-
-
-
-		
 
 class Boss(pyglet.sprite.Sprite):
 	"""Big ol blastro"""
@@ -893,7 +908,7 @@ def update_debug_label(dt):
 
 
 def update_score_label():
-	SCORE_LABEL.text = "Score: {}\nGuys: {}".format(0, PLAYER.lives)
+	SCORE_LABEL.text = "Score: {}\nLives: {}\nBombs: {}".format(0, PLAYER.lives, PLAYER.bombs)
 
 
 def player_collision_tick(dt):
@@ -907,7 +922,7 @@ def player_collision_tick(dt):
 		if dx**2 + dy**2 < PLAYER_HIT_RADIUS2 + ENEMY_BULLET_RADIUS2:
 			print("DEAD PLAYER")
 			PLAYER.death()
-			b.garbage = True
+			b.death()
 			update_score_label()
 
 	for e in MISC_LIST:
@@ -961,6 +976,8 @@ def on_key_press(key, mods):
 		PLAYER.speed_multi = PLAYER_SLOW_MOD
 	elif key == KEY_CHEAT_POWERUP:
 		MISC_LIST.append(PowerUp(200, 200))
+	elif key == KEY_BOMB_SCREEN:
+		PLAYER.bomb_screen()
 
 @WINDOW.event
 def on_key_release(key, mods):

@@ -29,9 +29,9 @@ PLAYER_LIVES = 3
 PLAYER_INVULNERABLE = 1.5
 PLAYER_RESPAWN_TIMER = 2.0
 PLAYER_SPAWN = [SCREEN_WIDTH_HALF, 150]
-PLAYER_BOMBS = 2
+PLAYER_BOMBS = 200
 
-BOMB_NOFIRE_TIME = 1.5
+BOMB_NOFIRE_TIME = 1.6
 BOMB_TIMER = 0
 
 # Weapon stuff
@@ -271,6 +271,7 @@ class Player(pyglet.sprite.Sprite):
 	def bomb_screen(self):
 		if self.bombs == 0: return
 		self.bombs -= 1
+		global BOMB_TIMER
 		BOMB_TIMER = GAME_TIMER + BOMB_NOFIRE_TIME
 		for b in ENEMY_BULLET_LIST:
 			b.death()
@@ -735,11 +736,6 @@ class Boss(pyglet.sprite.Sprite):
 			self.x += min(50, max(5, abs(self.move_diff) - abs(self.move_half - self.x))) * BOSS_SPEED_S2 * self.x_dir * dt
 
 
-
-			
-
-
-
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
 	def __init__(self, enemy_list, x_list, y_list, x_func_list, timer = WAVE_SPAWN_WAIT):
@@ -825,15 +821,17 @@ class Explode(pyglet.sprite.Sprite):
 		super().__init__(image, batch = BATCH)
 		self.x = x
 		self.y = y
-		pyglet.clock.schedule_once(self.death, self.image.get_duration())
+		self.timer = self.image.get_duration()
 		self.garbage = False
 
 	def update(self, dt):
-		return
+		self.timer -= dt
+		if self.timer <= 0:
+			self.death()
 
-	def death(self, dt):
+	def death(self):
 		self.garbage = True
-		self.visible = False
+		# self.visible = False
 
 # Helpers for making enemy formations
 def triangle_formation(base, x, y, x_offset, y_offset, flip = False):
@@ -903,6 +901,7 @@ def update_debug_label(dt):
 	DEBUG_LABEL.text = "FPS: {:.2f} (dt:{:.5f})".format(pyglet.clock.get_fps(), dt)
 	DEBUG_LABEL.text += "\nPlayer {:.1f}, {:.1f} |Bullets: {} |D: {}".format(PLAYER.x, PLAYER.y, len(PLAYER_BULLET_LIST), PLAYER.dead)
 	DEBUG_LABEL.text += "\nEnemies: {} |Bullets: {}".format(len(ENEMY_LIST), len(ENEMY_BULLET_LIST))
+	DEBUG_LABEL.text += "\nMisc ents: {}".format(len(MISC_LIST))
 	if CURRENT_LEVEL.boss != None:
 		DEBUG_LABEL.text += "\nBoss: {:.2f}, {:.2f} H: {} ({}) {}".format(CURRENT_LEVEL.boss.x, CURRENT_LEVEL.boss.y, CURRENT_LEVEL.boss.health, CURRENT_LEVEL.boss.stage, CURRENT_LEVEL.boss.weapon_timer)
 
@@ -1017,7 +1016,8 @@ def update_list(ulist, dt):
 	while i < len(ulist):
 		obj = ulist[i]
 		if obj.garbage:
-			ulist.pop(i)
+			e = ulist.pop(i)
+			del e
 		else:
 			obj.update(dt)
 			i += 1

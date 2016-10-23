@@ -103,10 +103,15 @@ BOSS_MAIN_RADIUS2 = BOSS_MAIN_RADIUS ** 2
 BOSS_MINI_OFFSET_X = 63
 BOSS_MINI_OFFSET_Y = -21
 
+BOSS_MINI_RADIUS = 10
+BOSS_MINI_RADIUS2 = BOSS_MINI_RADIUS ** 2
+
+BOSS_RAD_OFFSET_Y = -3
+
 BOSS_HEALTH = 4000
 BOSS_HEALTH_THRESHOLD = [0, 3999, 500, 0] # Change stages at these health value
 
-BOSS_MINI_HEALTH = 800
+BOSS_MINI_HEALTH = 500
 BOSS_MINI_LAUNCH_SPEED = 100
 BOSS_MINI_LAUNCH_TIME = 1.5
 BOSS_MINI_MOVE_TIMER = 0.6
@@ -365,6 +370,7 @@ class EnemyBullet(pyglet.sprite.Sprite):
 	def death(self):
 		self.garbage = True
 		MISC_LIST.append(Explode(self.x, self.y, bullet_pop_anim))
+		self.delete()
 
 
 class Spawner():
@@ -530,11 +536,12 @@ class EnemyAims(Enemy):
 
 class BossMinion(pyglet.sprite.Sprite):
 	"""Mini flyer connected to boss n blasts shit yo"""
-	def __init__(self, left = False):
+	def __init__(self, boss, left = False):
 		super().__init__(boss_mini_image, batch = BATCH)
 		self.health = BOSS_MINI_HEALTH
 		self.launching = True
 		self.timer = 0
+		self.boss = boss
 		self.left = left
 		Θ = math.radians(300)
 		self.launch_speed = [BOSS_MINI_LAUNCH_SPEED * math.cos(Θ), BOSS_MINI_LAUNCH_SPEED * math.sin(Θ)]
@@ -549,6 +556,8 @@ class BossMinion(pyglet.sprite.Sprite):
 		self.moves_left = 3
 		self.firing = False
 		self.weapons = []
+		self.dead = False
+		self.active = False
 
 		weapon_a = Spawner(self, 0, 0.25, ENEMY_BULLET_SPEED, 10)
 		Θ = math.radians(36)
@@ -560,6 +569,7 @@ class BossMinion(pyglet.sprite.Sprite):
 
 
 	def update(self, dt):
+		if self.dead: return
 		self.timer += dt
 		if self.launching:
 			self.x += self.launch_speed[0] * dt
@@ -588,6 +598,18 @@ class BossMinion(pyglet.sprite.Sprite):
 			self.x += self.speed_x * dt
 			self.y += self.speed_y * dt
 
+	def impact(self, bullet):
+		if self.dead: return
+		if self.active:
+			self.health -= bullet.damage
+			if self.health <= 0:
+				self.dead = True
+				self.visible = False
+				MISC_LIST.append(Explode(self.x, self.y))
+		else:
+			self.boss.impact(bullet)
+
+
 	def new_direction(self):
 		Θ = random.uniform(0, TWO_PI)
 		self.speed_x = math.cos(Θ) * BOSS_MINI_MOVE_SPEED
@@ -615,8 +637,8 @@ class Boss(pyglet.sprite.Sprite):
 		self.weapons = [0]
 
 		# Mini flyers
-		self.minion_l = BossMinion(True)
-		self.minion_r = BossMinion()
+		self.minion_l = BossMinion(self, True)
+		self.minion_r = BossMinion(self)
 
 		# WEAPON SET 1
 		weapons_s1 = []
@@ -663,7 +685,7 @@ class Boss(pyglet.sprite.Sprite):
 		weapons_s2.append([weapon_a])
 
 		# Sin wave burst at player
-		weapon_a = Spawner(self, 0, 0.1, ENEMY_BULLET_SPEED, 5)
+		weapon_a = Spawner(self, 0, 0.15, ENEMY_BULLET_SPEED, 5)
 		max_Θ = math.radians(20)
 		weapon_a.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y) + (b-2) * max_Θ * math.sin(t*3)
 		weapons_s2.append([weapon_a])
@@ -831,6 +853,7 @@ class Explode(pyglet.sprite.Sprite):
 
 	def death(self):
 		self.garbage = True
+		self.delete()
 		# self.visible = False
 
 # Helpers for making enemy formations
@@ -953,6 +976,12 @@ def enemy_collision_tick(dt):
 			if b.garbage: continue
 			if (boss.x - b.x)**2 + (boss.y - b.y)**2 < PLAYER_BULLET_RADIUS2 + BOSS_MAIN_RADIUS2:
 				boss.impact(b)
+				b.garbage = True
+			if (boss.minion_r.x - b.x) ** 2 + (boss.minion_r.y - b.y) ** 2 < PLAYER_BULLET_RADIUS2 + BOSS_MINI_RADIUS2:
+				boss.minion_r.impact(b)
+				b.garbage = True
+			if (boss.minion_l.x - b.x) ** 2 + (boss.minion_l.y - b.y) ** 2 < PLAYER_BULLET_RADIUS2 + BOSS_MINI_RADIUS2:
+				boss.minion_l.impact(b)
 				b.garbage = True
 
 		

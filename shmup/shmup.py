@@ -109,9 +109,9 @@ BOSS_MINI_RADIUS2 = BOSS_MINI_RADIUS ** 2
 BOSS_RAD_OFFSET_Y = -3
 
 BOSS_HEALTH = 4000
-BOSS_HEALTH_THRESHOLD = [0, 3999, 500, 0] # Change stages at these health value
+BOSS_HEALTH_THRESHOLD = [0, 3999, 3998, 0, -1000] # Change stages at these health value
 
-BOSS_MINI_HEALTH = 500
+BOSS_MINI_HEALTH = 5
 BOSS_MINI_LAUNCH_SPEED = 100
 BOSS_MINI_LAUNCH_TIME = 1.5
 BOSS_MINI_MOVE_TIMER = 0.6
@@ -129,6 +129,11 @@ BOSS_X_RANGE_S2 = 250
 BOSS_WEAPON_WAIT_S2 = 0.67
 BOSS_WEAPON_BURST_S2 = 3.3
 BOSS_SPEED_S2 = 4.0
+
+BOSS_X_RANGE_S3 = 300
+BOSS_FADEOUT_RATE_S3 = 255
+BOSS_FADEIN_RATE_S3 = 255
+BOSS_WEAPON_BURST_S3 = 1.5
 
 
 # Powerup settings
@@ -633,7 +638,7 @@ class Boss(pyglet.sprite.Sprite):
 		self.stage = 0
 		self.health = BOSS_HEALTH
 		self.timer = 0
-		self.update_stage = [self.update_s0, self.update_s1, self.update_s2]
+		self.update_stage = [self.update_s0, self.update_s1, self.update_s2, self.update_s3]
 		self.weapons = [0]
 
 		# Mini flyers
@@ -692,6 +697,24 @@ class Boss(pyglet.sprite.Sprite):
 
 		self.weapons.append(weapons_s2)
 		# END WEAPON SET 2
+		# WEAPON SET 3
+		weapons_s3 = []
+
+		# Big spinny
+		weapon_a = Spawner(self, 0, 0.08, ENEMY_BULLET_SPEED, 40)
+		Θ = math.radians(18)
+		weapon_a.angle_func = lambda t, b: t*2 + Θ * math.sin(t*3) + b * Θ
+		weapons_s3.append([weapon_a])
+
+		# Fast burst
+		weapon_a = Spawner(self, 0, 0.25, ENEMY_BULLET_SPEED, 120)
+		Θ = math.radians(11.25)
+		weapon_a.angle_func = lambda t, b: t//0.25*Θ + b * Θ*2
+		weapon_a.speed_func = lambda t, b: 30 * b//8
+		weapons_s3.append([weapon_a])
+
+		self.weapons.append(weapons_s3)
+		# END WEAPON SET 3
 
 		self.weapon_timer = BOSS_WEAPON_WAIT_S1
 		self.move_timer = 0
@@ -715,6 +738,8 @@ class Boss(pyglet.sprite.Sprite):
 		if self.stage == 2:
 			self.move_target_x = self.x
 			self.weapon_timer = 0
+		elif self.stage == 3:
+			self.fade = 0
 
 	def update_s0(self, dt):
 		self.y -= BOSS_INTRO_SPEED * dt
@@ -747,7 +772,7 @@ class Boss(pyglet.sprite.Sprite):
 				self.move_diff = (self.move_target_x - self.x) * 0.5
 				self.move_half = self.move_target_x - self.move_diff
 				self.x_dir = math.copysign(1, self.move_diff)
-				print("Picking new spot: {}\n{}\n{}\n{}\n{}".format(self.x, self.move_target_x, self.move_diff, self.move_half, self.x_dir))
+				# print("Picking new spot: {}\n{}\n{}\n{}\n{}".format(self.x, self.move_target_x, self.move_diff, self.move_half, self.x_dir))
 				self.weapon_timer = BOSS_WEAPON_BURST_S2
 				self.active = random.choice(self.weapons[self.stage])
 			else:
@@ -756,6 +781,32 @@ class Boss(pyglet.sprite.Sprite):
 					w.update(dt)
 		else:
 			self.x += min(50, max(5, abs(self.move_diff) - abs(self.move_half - self.x))) * BOSS_SPEED_S2 * self.x_dir * dt
+
+	def update_s3(self, dt):
+		self.minion_l.update(dt*1.5)
+		self.minion_r.update(dt*1.5)
+		if self.fade == 0:
+			self.weapon_timer -= dt
+			for w in self.active: w.update(dt)
+			if self.weapon_timer <= 0:
+				self.fade = 1
+		elif self.fade == 1:
+			self.opacity -= BOSS_FADEOUT_RATE_S3 * dt
+			if self.opacity <= 0:
+				self.opacity = 0
+				self.x = random.randrange(SCREEN_WIDTH_HALF - BOSS_X_RANGE_S3, SCREEN_WIDTH_HALF + BOSS_X_RANGE_S3)
+				self.fade = -1
+		elif self.fade == -1:
+			self.opacity += BOSS_FADEIN_RATE_S3 * dt
+			if self.opacity >= 255:
+				self.opacity = 255
+				self.fade = 0
+				self.active = random.choice(self.weapons[self.stage])
+				self.weapon_timer = BOSS_WEAPON_BURST_S3
+
+
+
+
 
 
 class EnemyPattern():

@@ -347,9 +347,25 @@ class PowerUp(pyglet.sprite.Sprite):
 			self.new_dir()
 
 	def new_dir(self):
-		angle = random.uniform(0, 2*math.pi)
+		angle = random.uniform(0, TWO_PI)
 		self.speed_x = math.cos(angle) * POWERUP_MOVE_SPEED
 		self.speed_y = math.sin(angle) * POWERUP_MOVE_SPEED
+
+	def powerup(self, player):
+		print("POWUH UP")
+		player.power_level += 1
+		self.garbage = True
+		self.visible = False
+
+
+class BombUp(PowerUp):
+	"""Extra bomb"""
+	def powerup(self, player):
+		print("BOMS UP")
+		player.bombs += 1
+		self.garbage = True
+		self.visible = False		
+
 
 class EnemyBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by enemy. Travels in a straight line."""
@@ -836,7 +852,7 @@ class Boss(pyglet.sprite.Sprite):
 
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
-	def __init__(self, enemy_list, x_list, y_list, x_func_list, timer = WAVE_SPAWN_WAIT):
+	def __init__(self, enemy_list, x_list, y_list, x_func_list, timer = WAVE_SPAWN_WAIT, bonus = PowerUp):
 		biggest = max(len(enemy_list), len(x_list), len(y_list), len(x_func_list))
 		self.enemy_list = enemy_list # List of enemy types to spawn
 		self.fill(self.enemy_list, biggest)
@@ -847,6 +863,7 @@ class EnemyPattern():
 		self.x_func_list = x_func_list
 		self.fill(self.x_func_list, biggest)
 		self.timer = timer
+		self.bonus = bonus
 
 	def spawn(self):
 		wave = []
@@ -886,7 +903,7 @@ class LevelPattern():
 					self.last = True
 				self.waiting = False
 				self.waves.append(pattern.spawn())
-				self.powerup.append(True)
+				self.powerup.append(pattern.bonus)
 				self.timer = pattern.timer
 		i = 0
 		if self.boss != None:
@@ -896,8 +913,9 @@ class LevelPattern():
 			w = self.waves[i]
 			if len(w) == 0:
 				self.waves.pop(i)
-				if self.powerup.pop(i):
-					MISC_LIST.append(PowerUp(SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF))
+				bonus = self.powerup.pop(i)
+				if bonus != None:
+					MISC_LIST.append(bonus(SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF))
 				continue
 			else:
 				ii = 0
@@ -906,7 +924,7 @@ class LevelPattern():
 					if obj.garbage:
 						# if enemy died from being offscreen no powerup is spawned
 						if obj.offscreen:
-							self.powerup[i] = False
+							self.powerup[i] = None
 						w.pop(ii)
 					else:
 						obj.update(dt)
@@ -1029,10 +1047,7 @@ def player_collision_tick(dt):
 			dy = e.y - py
 			# Check radii
 			if dx**2 + dy**2 < PLAYER_HIT_RADIUS2 + POWERUP_RADIUS2:
-				print("POWAH UP!")
-				PLAYER.power_level += 1
-				e.garbage = True
-				e.visible = False
+				e.powerup(PLAYER)
 
 
 

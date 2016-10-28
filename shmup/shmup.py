@@ -109,7 +109,7 @@ BOSS_MINI_RADIUS2 = BOSS_MINI_RADIUS ** 2
 BOSS_RAD_OFFSET_Y = -3
 
 BOSS_HEALTH = 4000
-BOSS_HEALTH_THRESHOLD = [0, 3999, 3998, 0, -1000] # Change stages at these health value
+BOSS_HEALTH_THRESHOLD = [0, 3999, 3998, 3997, -1000] # Change stages at these health value
 
 BOSS_MINI_HEALTH = 5
 BOSS_MINI_LAUNCH_SPEED = 100
@@ -196,6 +196,7 @@ boss_image = prepare_image("img/boss_wip.png")
 boss_mini_image = prepare_image("img/boss_mini.png")
 
 powerup_anim, powerup_sheet = prepare_anim("img/powerup1.png", 1, 8, 0.125)
+bombup_anim, bombup_sheet = prepare_anim("img/bombup.png", 1, 10, 0.125)
 explode64_anim, explode64_sheet = prepare_anim("img/explode64.png", 1, 8, 0.04)
 bullet_pop_anim, bullet_pop_sheet = prepare_anim("img/bullet_pop.png", 1, 8, 0.08)
 
@@ -608,11 +609,15 @@ class BossMinion(pyglet.sprite.Sprite):
 		if self.active:
 			self.health -= bullet.damage
 			if self.health <= 0:
-				self.dead = True
-				self.visible = False
-				MISC_LIST.append(Explode(self.x, self.y))
+				self.death()
 		else:
 			self.boss.impact(bullet)
+
+	def death(self):
+		if self.dead: return
+		self.dead = True
+		self.visible = False
+		MISC_LIST.append(Explode(self.x, self.y))
 
 
 	def new_direction(self):
@@ -638,7 +643,7 @@ class Boss(pyglet.sprite.Sprite):
 		self.stage = 0
 		self.health = BOSS_HEALTH
 		self.timer = 0
-		self.update_stage = [self.update_s0, self.update_s1, self.update_s2, self.update_s3]
+		self.update_stage = [self.update_s0, self.update_s1, self.update_s2, self.update_s3, self.update_s4]
 		self.weapons = [0]
 
 		# Mini flyers
@@ -740,6 +745,11 @@ class Boss(pyglet.sprite.Sprite):
 			self.weapon_timer = 0
 		elif self.stage == 3:
 			self.fade = 0
+		elif self.stage == 4:
+			self.minion_l.death()
+			self.minion_r.death()
+			self.move_timer = 0
+			self.weapon_timer = 3.6
 
 	def update_s0(self, dt):
 		self.y -= BOSS_INTRO_SPEED * dt
@@ -804,6 +814,21 @@ class Boss(pyglet.sprite.Sprite):
 				self.active = random.choice(self.weapons[self.stage])
 				self.weapon_timer = BOSS_WEAPON_BURST_S3
 
+	def update_s4(self, dt):
+		self.move_timer -= dt
+		if self.move_timer <= 0:
+			self.move_timer = random.uniform(0.25, 0.5)
+			Θ = random.uniform(0, TWO_PI)
+			speed = random.uniform(100, 250)
+			self.x_speed = math.cos(Θ) * speed
+			self.y_speed = math.sin(Θ) * speed
+		self.x += self.x_speed * dt
+		self.y += self.y_speed * dt
+		self.x_speed *= 0.94
+		self.y_speed *= 0.94
+		MISC_LIST.append(
+			Explode(self.x - self.image.anchor_x + random.uniform(0, self.width),
+					self.y - self.image.anchor_y + random.uniform(0, self.height)))
 
 
 

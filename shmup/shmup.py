@@ -950,6 +950,7 @@ class Explode(pyglet.sprite.Sprite):
 		self.y = y
 		self.timer = self.image.get_duration()
 		self.garbage = False
+		self.color = (random.randrange(255), random.randrange(255), random.randrange(255))
 
 	def update(self, dt):
 		self.timer -= dt

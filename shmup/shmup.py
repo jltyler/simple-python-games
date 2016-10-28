@@ -330,8 +330,8 @@ class PlayerDiagBullet(PlayerBullet):
 
 class PowerUp(pyglet.sprite.Sprite):
 	"""WISE FWUM YO GWAVE"""
-	def __init__(self, x, y):
-		super().__init__(powerup_anim, batch = BATCH)
+	def __init__(self, x, y, image = powerup_anim):
+		super().__init__(image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.timer = POWERUP_MOVE_TIMER
@@ -360,6 +360,9 @@ class PowerUp(pyglet.sprite.Sprite):
 
 class BombUp(PowerUp):
 	"""Extra bomb"""
+	def __init__(self, x, y):
+		super().__init__(x, y, bombup_anim)
+
 	def powerup(self, player):
 		print("BOMS UP")
 		player.bombs += 1
@@ -661,6 +664,7 @@ class Boss(pyglet.sprite.Sprite):
 		self.timer = 0
 		self.update_stage = [self.update_s0, self.update_s1, self.update_s2, self.update_s3, self.update_s4]
 		self.weapons = [0]
+		self.dead = False
 
 		# Mini flyers
 		self.minion_l = BossMinion(self, True)
@@ -831,11 +835,17 @@ class Boss(pyglet.sprite.Sprite):
 				self.weapon_timer = BOSS_WEAPON_BURST_S3
 
 	def update_s4(self, dt):
+		self.weapon_timer -= dt
+		if self.weapon_timer <= 0 and not self.dead:
+			self.visible = False
+			self.dead = True
+			MISC_LIST.append(Explode(self.x, self.y))
+			return
 		self.move_timer -= dt
 		if self.move_timer <= 0:
-			self.move_timer = random.uniform(0.25, 0.5)
+			self.move_timer = random.uniform(0.15, 0.3)
 			Θ = random.uniform(0, TWO_PI)
-			speed = random.uniform(100, 250)
+			speed = random.uniform(300, 550)
 			self.x_speed = math.cos(Θ) * speed
 			self.y_speed = math.sin(Θ) * speed
 		self.x += self.x_speed * dt
@@ -845,6 +855,7 @@ class Boss(pyglet.sprite.Sprite):
 		MISC_LIST.append(
 			Explode(self.x - self.image.anchor_x + random.uniform(0, self.width),
 					self.y - self.image.anchor_y + random.uniform(0, self.height)))
+
 
 
 
@@ -979,6 +990,7 @@ rect_4_x, rect_4_y = rectangle_formation(4, 4, SCREEN_WIDTH_HALF, 0, 64, 96)
 WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
 WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
 WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1)
+WAVE_SINGLE_ENEMY2 = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1, BombUp)
 
 # WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 # WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
@@ -989,7 +1001,7 @@ WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y
 # WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
 # TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
-TEST_LEVEL = LevelPattern([WAVE_SINGLE_ENEMY], Boss)
+TEST_LEVEL = LevelPattern([WAVE_SINGLE_ENEMY2], Boss)
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()

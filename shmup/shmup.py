@@ -30,6 +30,7 @@ PLAYER_INVULNERABLE = 1.5
 PLAYER_RESPAWN_TIMER = 2.0
 PLAYER_SPAWN = [SCREEN_WIDTH_HALF, 150]
 PLAYER_BOMBS = 200
+PLAYER_SCORE = 0
 
 BOMB_NOFIRE_TIME = 1.6
 BOMB_TIMER = 0
@@ -197,6 +198,7 @@ boss_mini_image = prepare_image("img/boss_mini.png")
 
 powerup_anim, powerup_sheet = prepare_anim("img/powerup1.png", 1, 8, 0.125)
 bombup_anim, bombup_sheet = prepare_anim("img/bombup.png", 1, 10, 0.125)
+scoreup_anim, scoreup_sheet = prepare_anim("img/scoreup.png", 1, 10, 0.1)
 explode64_anim, explode64_sheet = prepare_anim("img/explode64.png", 1, 8, 0.04)
 bullet_pop_anim, bullet_pop_sheet = prepare_anim("img/bullet_pop.png", 1, 8, 0.08)
 
@@ -236,7 +238,7 @@ class Player(pyglet.sprite.Sprite):
 		self.shooting = False
 		self.speed_multi = 1.0
 		self.btimer = 0
-		self.power_level = 3
+		self.power_level = 0
 		self.dead = False
 		self.lives = PLAYER_LIVES
 		self.invunerable = PLAYER_INVULNERABLE
@@ -364,10 +366,23 @@ class BombUp(PowerUp):
 		super().__init__(x, y, bombup_anim)
 
 	def powerup(self, player):
-		print("BOMS UP")
+		print("BOM SUP")
 		player.bombs += 1
 		self.garbage = True
 		self.visible = False		
+
+class ScoreUp(PowerUp):
+	"""Point boost (default powerup)"""
+	def __init__(self, x, y):
+		super().__init__(x, y, scoreup_anim)
+
+	def powerup(self, player):
+		print("SCOr UP")
+		global PLAYER_SCORE
+		PLAYER_SCORE += 1000
+		self.garbage = True
+		self.visible = False
+		
 
 
 class EnemyBullet(pyglet.sprite.Sprite):
@@ -863,24 +878,21 @@ class Boss(pyglet.sprite.Sprite):
 
 class EnemyPattern():
 	"""Spawning pattern for enemies"""
-	def __init__(self, enemy_list, x_list, y_list, x_func_list, timer = WAVE_SPAWN_WAIT, bonus = PowerUp):
-		biggest = max(len(enemy_list), len(x_list), len(y_list), len(x_func_list))
+	def __init__(self, enemy_list, x_list, y_list, timer = WAVE_SPAWN_WAIT, bonus = ScoreUp):
+		biggest = max(len(enemy_list), len(x_list), len(y_list))
 		self.enemy_list = enemy_list # List of enemy types to spawn
 		self.fill(self.enemy_list, biggest)
 		self.x_list = x_list # List of x locations to spawn at
 		self.fill(self.x_list, biggest)
 		self.y_list = y_list # List of y locations to spawn at
 		self.fill(self.y_list, biggest)
-		self.x_func_list = x_func_list
-		self.fill(self.x_func_list, biggest)
 		self.timer = timer
 		self.bonus = bonus
 
 	def spawn(self):
 		wave = []
-		for etype, x, y, x_func in zip(self.enemy_list, self.x_list, self.y_list, self.x_func_list):
+		for etype, x, y in zip(self.enemy_list, self.x_list, self.y_list):
 			enemy = etype(x, WAVE_SPAWN_Y + y)
-			enemy.x_speed_func = x_func
 			wave.append(enemy)
 		return wave
 
@@ -985,13 +997,16 @@ def rectangle_formation(width, height, x, y, x_offset, y_offset):
 
 
 tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96)
-rect_4_x, rect_4_y = rectangle_formation(4, 4, SCREEN_WIDTH_HALF, 0, 64, 96)
+rect_3x5_x, rect_3x5_y = rectangle_formation(3, 5, SCREEN_WIDTH_HALF, 0, 64, 96)
 
 # Level 
-WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
-WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
-WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1)
-WAVE_SINGLE_ENEMY2 = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1, BombUp)
+# WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
+# WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
+# WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1)
+# WAVE_SINGLE_ENEMY2 = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1, BombUp)
+
+
+WAVE_1 = EnemyPattern([Enemy], rect_3x5_x, rect_3x5_y, 8)
 
 # WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
 # WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
@@ -1002,7 +1017,7 @@ WAVE_SINGLE_ENEMY2 = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, 
 # WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
 # TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
-TEST_LEVEL = LevelPattern([WAVE_SINGLE_ENEMY2], Boss)
+TEST_LEVEL = LevelPattern([WAVE_1], Boss)
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()

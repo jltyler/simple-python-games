@@ -36,6 +36,7 @@ BOMB_NOFIRE_TIME = 1.6
 BOMB_TIMER = 0
 
 # Weapon stuff
+PLAYER_STARTING_POWER = 0
 PLAYER_GUN_OFFSET_LEFT = (-8, 11)
 PLAYER_GUN_OFFSET_RIGHT = (8, 11)
 PLAYER_GUN_OFFSET_LEFT2 = (-14, 6)
@@ -47,9 +48,15 @@ PLAYER_BULLET_RADIUS = 3
 PLAYER_BULLET_RADIUS2 = PLAYER_BULLET_RADIUS**2
 
 PLAYER_BIGBULLET_SPEED = 480.0
-PLAYER_BIGBULLET_DAMAGE = 35.0
+PLAYER_BIGBULLET_DAMAGE = 25.0
 PLAYER_BIGBULLET_RADIUS = 4.5
 PLAYER_BIGBULLET_RADIUS2 = PLAYER_BIGBULLET_RADIUS ** 2
+
+PLAYER_FINALBULLET_SPEED = 510.0
+PLAYER_FINALBULLET_DAMAGE = 45.0
+PLAYER_FINALBULLET_RADIUS = 6
+PLAYER_FINALBULLET_RADIUS2 = PLAYER_FINALBULLET_RADIUS ** 2
+
 
 # Diagonal bullet
 PLAYER_DIAGBULLET_SPEED = 450.0
@@ -188,6 +195,7 @@ player_bullet_image = prepare_image("img/player_bullet.png")
 player_bigbullet_image = prepare_image("img/player_bigbullet.png")
 player_diagbullet_image = prepare_image("img/player_diagbullet.png")
 player_diagbullet_image_flip = player_diagbullet_image.get_texture().get_transform(flip_x = True)
+player_finalbullet_image = prepare_image("img/player_finalbullet.png")
 bullet_image = prepare_image("img/bullet.png")
 enemy_image = prepare_image("img/enemy.png")
 enemy_shooter_image = prepare_image("img/enemy_shoot.png")
@@ -224,9 +232,14 @@ def fire_weapon_3(player):
 	PLAYER_BULLET_LIST.append(PlayerDiagBullet(player.x + PLAYER_GUN_OFFSET_LEFT2[0], player.y + PLAYER_GUN_OFFSET_LEFT2[1], True))
 	PLAYER_BULLET_LIST.append(PlayerDiagBullet(player.x + PLAYER_GUN_OFFSET_RIGHT2[0], player.y + PLAYER_GUN_OFFSET_RIGHT2[1]))
 
+def fire_weapon_4(player):
+	fire_weapon_3(player)
+	PLAYER_BULLET_LIST.append(PlayerDiagBullet(player.x + PLAYER_GUN_OFFSET_LEFT[0], player.y + PLAYER_GUN_OFFSET_LEFT[1], True))
+	PLAYER_BULLET_LIST.append(PlayerDiagBullet(player.x + PLAYER_GUN_OFFSET_RIGHT[0], player.y + PLAYER_GUN_OFFSET_RIGHT[1]))
+	PLAYER_BULLET_LIST.append(PlayerFinalBullet(player.x, player.y + 12))
 
 # Fire function array
-fire_weapon = [fire_weapon_0, fire_weapon_1, fire_weapon_2, fire_weapon_3]
+fire_weapon = [fire_weapon_0, fire_weapon_1, fire_weapon_2, fire_weapon_3, fire_weapon_4]
 
 class Player(pyglet.sprite.Sprite):
 	"""Player ship that moves n shoots"""
@@ -238,7 +251,7 @@ class Player(pyglet.sprite.Sprite):
 		self.shooting = False
 		self.speed_multi = 1.0
 		self.btimer = 0
-		self.power_level = 0
+		self.power_level = PLAYER_STARTING_POWER
 		self.dead = False
 		self.lives = PLAYER_LIVES
 		self.invunerable = PLAYER_INVULNERABLE
@@ -292,12 +305,13 @@ class Player(pyglet.sprite.Sprite):
 
 class PlayerBullet(pyglet.sprite.Sprite):
 	"""Bullet shot by player, collides with enemies"""
-	def __init__(self, x, y, damage = PLAYER_BULLET_DAMAGE, image = player_bullet_image):
+	def __init__(self, x, y, damage = PLAYER_BULLET_DAMAGE, image = player_bullet_image, radius = PLAYER_BULLET_RADIUS2):
 		super().__init__(image, batch = BATCH)
 		self.x = x
 		self.y = y
 		self.garbage = False
 		self.damage = damage
+		self.radius = radius
 
 	def update(self, dt):
 		# Go up
@@ -308,12 +322,22 @@ class PlayerBullet(pyglet.sprite.Sprite):
 class PlayerBigBullet(PlayerBullet):
 	"""Big bullet does more damage and travels slightly faster"""
 	def __init__(self, x, y):
-		super().__init__(x, y, PLAYER_BIGBULLET_DAMAGE, player_bigbullet_image)
+		super().__init__(x, y, PLAYER_BIGBULLET_DAMAGE, player_bigbullet_image, PLAYER_BIGBULLET_RADIUS2)
 
 	def update(self, dt):
 		self.y += PLAYER_BIGBULLET_SPEED * dt
 		if self.y > SCREEN_HEIGHT:
 			self.garbage = True
+
+class PlayerFinalBullet(PlayerBullet):
+	"""Wave lookin bullet that devestates enemies"""
+	def __init__(self, x, y):
+		super().__init__(x, y, PLAYER_FINALBULLET_DAMAGE, player_finalbullet_image, PLAYER_FINALBULLET_RADIUS2)
+
+	def update(self, dt):
+		self.y += PLAYER_FINALBULLET_SPEED * dt
+		if self.y > SCREEN_HEIGHT:
+			self.garbage = True		
 		
 class PlayerDiagBullet(PlayerBullet):
 	"""Bullet that shoots out diagonally"""
@@ -1086,20 +1110,20 @@ def enemy_collision_tick(dt):
 				if b.garbage: continue
 				cx = min(max(b.x, e.x - e.box[0]), e.x + e.box[0])
 				cy = min(max(b.y, e.y - e.box[1]), e.y + e.box[1])
-				if (cx - b.x)**2 + (cy - b.y)**2 < PLAYER_BULLET_RADIUS2:
+				if (cx - b.x)**2 + (cy - b.y)**2 < b.radius:
 					e.impact(b)
 					b.garbage = True
 	if CURRENT_LEVEL.boss != None:
 		boss = CURRENT_LEVEL.boss
 		for b in PLAYER_BULLET_LIST:
 			if b.garbage: continue
-			if (boss.x - b.x)**2 + (boss.y - b.y)**2 < PLAYER_BULLET_RADIUS2 + BOSS_MAIN_RADIUS2:
+			if (boss.x - b.x)**2 + (boss.y - b.y)**2 < b.radius + BOSS_MAIN_RADIUS2:
 				boss.impact(b)
 				b.garbage = True
-			if (boss.minion_r.x - b.x) ** 2 + (boss.minion_r.y - b.y) ** 2 < PLAYER_BULLET_RADIUS2 + BOSS_MINI_RADIUS2:
+			if (boss.minion_r.x - b.x) ** 2 + (boss.minion_r.y - b.y) ** 2 < b.radius + BOSS_MINI_RADIUS2:
 				boss.minion_r.impact(b)
 				b.garbage = True
-			if (boss.minion_l.x - b.x) ** 2 + (boss.minion_l.y - b.y) ** 2 < PLAYER_BULLET_RADIUS2 + BOSS_MINI_RADIUS2:
+			if (boss.minion_l.x - b.x) ** 2 + (boss.minion_l.y - b.y) ** 2 < b.radius + BOSS_MINI_RADIUS2:
 				boss.minion_l.impact(b)
 				b.garbage = True
 

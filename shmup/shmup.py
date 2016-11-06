@@ -18,8 +18,9 @@ TWO_PI = math.pi * 2
 
 # Player settings
 PLAYER_MOVE_SPEED = 250.0
+PLAYER_MOVEMENT_BORDER = 24
 PLAYER_DIAGONAL_MOD = 0.70710678118 # root of 2 over 2 (not used yet)
-PLAYER_SLOW_MOD = 0.5
+PLAYER_SLOW_MOD = 0.33
 PLAYER_FIRE_RATE = 0.25
 PLAYER_HIT_RADIUS = 3
 PLAYER_HIT_RADIUS2 = PLAYER_HIT_RADIUS ** 2
@@ -29,7 +30,7 @@ PLAYER_LIVES = 3
 PLAYER_INVULNERABLE = 1.5
 PLAYER_RESPAWN_TIMER = 2.0
 PLAYER_SPAWN = [SCREEN_WIDTH_HALF, 150]
-PLAYER_BOMBS = 200
+PLAYER_BOMBS = 1
 PLAYER_SCORE = 0
 
 BOMB_NOFIRE_TIME = 1.6
@@ -80,30 +81,31 @@ ENEMY1_Y_SPEED = -95.0
 ENEMY1_HEALTH = 30.0
 
 ENEMY2_HEALTH = 45.0
-ENEMY2_SPREAD = 4
+ENEMY2_SPREAD = math.radians(4)
 ENEMY2_BULLETS = 4
 ENEMY2_FIRE_RATE = 1.3
-ENEMY2_FIRE_ANGLE = 270 - (ENEMY2_SPREAD * (ENEMY2_BULLETS - 1)) / 2
+ENEMY2_FIRE_ANGLE = ONE_HALF_PI - (ENEMY2_SPREAD * (ENEMY2_BULLETS - 1)) / 2
 
-ENEMY3_HEALTH = 300.0
+ENEMY3_HEALTH = 340.0
 ENEMY3_SPEED = 120.0
 ENEMY3_FIRE_RATE = 1.2
-ENEMY3_FIRE_FUNC = lambda t: t*30
+Θ = math.radians(30)
+ENEMY3_SPREAD = math.radians(20.0)
+ENEMY3_FIRE_FUNC = lambda t, b: t*Θ + b*ENEMY3_SPREAD
 ENEMY3_TARGET_Y = SCREEN_HEIGHT - 150
 ENEMY3_TARGET_X = 150
 ENEMY3_BULLETS = 18
-ENEMY3_SPREAD = 20.0
 
-ENEMY4_HEALTH = 30.0
+ENEMY4_HEALTH = 45.0
 ENEMY4_SPEED = 100.0
 ENEMY4_FIRE_RATE = 0.8
 ENEMY4_BULLETS = 3
-ENEMY4_SPREAD = 4.0
+ENEMY4_SPREAD = math.radians(4.0)
 ENEMY4_SPREAD_OFF = (ENEMY4_SPREAD * (ENEMY4_BULLETS - 1)) / 2
 
 # Boss settings
-BOSS_INTRO_SPEED = 720 # 90
-BOSS_INTRO_TIME = 0.5 # 4.0
+BOSS_INTRO_SPEED = 90 # 90
+BOSS_INTRO_TIME = 4.0 # 4.0
 
 BOSS_MAIN_RADIUS = 48
 BOSS_MAIN_RADIUS2 = BOSS_MAIN_RADIUS ** 2
@@ -116,10 +118,10 @@ BOSS_MINI_RADIUS2 = BOSS_MINI_RADIUS ** 2
 
 BOSS_RAD_OFFSET_Y = -3
 
-BOSS_HEALTH = 4000
-BOSS_HEALTH_THRESHOLD = [0, 3999, 3998, 3997, -1000] # Change stages at these health value
+BOSS_HEALTH = 9000
+BOSS_HEALTH_THRESHOLD = [0, BOSS_HEALTH * 0.7, BOSS_HEALTH * 0.15, 0, -10000] # Change stages at these health value
 
-BOSS_MINI_HEALTH = 5
+BOSS_MINI_HEALTH = 450
 BOSS_MINI_LAUNCH_SPEED = 100
 BOSS_MINI_LAUNCH_TIME = 1.5
 BOSS_MINI_MOVE_TIMER = 0.6
@@ -267,14 +269,23 @@ class Player(pyglet.sprite.Sprite):
 				self.x = PLAYER_SPAWN[0]
 				self.y = PLAYER_SPAWN[1]
 				self.visible = True
+				self.power_level = max(0, self.power_level - 2)
 
 			return				
 		self.invunerable -= dt
 		# Terrible movement code
 		if self.moving[0] != 0:
 			self.x += self.moving[0] * PLAYER_MOVE_SPEED * self.speed_multi * dt
+			if self.x < PLAYER_MOVEMENT_BORDER:
+				self.x = PLAYER_MOVEMENT_BORDER
+			elif self.x > SCREEN_WIDTH - PLAYER_MOVEMENT_BORDER:
+				self.x = SCREEN_WIDTH - PLAYER_MOVEMENT_BORDER
 		if self.moving[1] != 0:
 			self.y += self.moving[1] * PLAYER_MOVE_SPEED * self.speed_multi * dt
+			if self.y < PLAYER_MOVEMENT_BORDER:
+				self.y = PLAYER_MOVEMENT_BORDER
+			elif self.y > SCREEN_HEIGHT - PLAYER_MOVEMENT_BORDER:
+				self.y = SCREEN_HEIGHT - PLAYER_MOVEMENT_BORDER
 
 		# SHooties
 		self.btimer -= dt
@@ -366,7 +377,11 @@ class PowerUp(pyglet.sprite.Sprite):
 
 	def update(self, dt):
 		self.x += self.speed_x * dt
+		if self.x < PLAYER_MOVEMENT_BORDER or self.x > SCREEN_WIDTH - PLAYER_MOVEMENT_BORDER:
+			self.speed_x *= -1
 		self.y += self.speed_y * dt
+		if self.y < PLAYER_MOVEMENT_BORDER or self.y > SCREEN_HEIGHT - PLAYER_MOVEMENT_BORDER:
+			self.speed_y *= -1
 		self.timer -= dt
 		if self.timer <= 0:
 			self.timer = POWERUP_MOVE_TIMER
@@ -495,6 +510,7 @@ class Enemy(pyglet.sprite.Sprite):
 		self.box = [image.width // 2, image.height // 2]
 		self.offscreen = False
 		self.timer = 0
+		self.point_value = 50
 
 	def update(self, dt):
 		# Go down
@@ -514,14 +530,30 @@ class Enemy(pyglet.sprite.Sprite):
 	def death(self):
 		self.garbage = True
 		self.visible = False
+		global PLAYER_SCORE
+		PLAYER_SCORE += self.point_value
 		MISC_LIST.append(Explode(self.x, self.y))
+
+class EnemyWavey(Enemy):
+	"""Duplicate of basic enemy moves to the center"""
+	def __init__(self, x, y):
+		super().__init__(x, y)
+		if self.x < SCREEN_WIDTH_HALF:
+			self.x_speed_func = lambda t, y: math.sin(y*0.01)*114
+		else:
+			self.x_speed_func = lambda t, y: math.sin(y*0.01)*-114
+		self.point_value = 75
+
 		
+
 class EnemyShoots(Enemy):
 	"""Enemy that fires triples at a fixed angle"""
 	def __init__(self, x, y):
 		super().__init__(x, y, enemy_shooter_image)
 		self.health = ENEMY2_HEALTH
-		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY2_BULLETS, ENEMY2_SPREAD)
+		self.weapon = Spawner(self, ENEMY2_FIRE_ANGLE, ENEMY2_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY2_BULLETS)
+		self.weapon.angle_func = lambda t, b: b * ENEMY2_SPREAD
+		self.point_value = 75
 
 	def update(self, dt):
 		super().update(dt)
@@ -533,7 +565,7 @@ class EnemyStops(Enemy):
 	def __init__(self, x, y, target_x = None, target_y = None):
 		super().__init__(x, y, enemy_stop_image)
 		if target_x == None:
-			if x < ENEMY3_TARGET_X:
+			if x < SCREEN_WIDTH_HALF:
 				target_x = ENEMY3_TARGET_X
 			else:
 				target_x = SCREEN_WIDTH - ENEMY3_TARGET_X
@@ -541,10 +573,11 @@ class EnemyStops(Enemy):
 		if target_y == None:
 			target_y = ENEMY3_TARGET_Y
 		self.target_y = target_y
-		self.weapon = Spawner(self, 270 - 15, ENEMY3_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY3_BULLETS, ENEMY3_SPREAD)
+		self.weapon = Spawner(self, 0, ENEMY3_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY3_BULLETS)
 		self.weapon.angle_func = ENEMY3_FIRE_FUNC
 		self.stopped = False
 		self.health = ENEMY3_HEALTH
+		self.point_value = 350
 
 	def update(self, dt):
 		if self.stopped:
@@ -588,9 +621,10 @@ class EnemyAims(Enemy):
 	"""Enemy that moves down like others but aims at the player when it fires it's weapon"""
 	def __init__(self, x, y):
 		super().__init__(x, y, enemy_aim_image)
-		self.weapon = Spawner(self, 0, ENEMY4_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY4_BULLETS, ENEMY4_SPREAD)
+		self.weapon = Spawner(self, 0, ENEMY4_FIRE_RATE, ENEMY_BULLET_SPEED, ENEMY4_BULLETS)
 		self.health = ENEMY4_HEALTH
-		self.weapon.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y) - ENEMY4_SPREAD_OFF
+		self.weapon.angle_func = lambda t, b: get_dir_rad(self.x, self.y, PLAYER.x, PLAYER.y) - ENEMY4_SPREAD_OFF + b * ENEMY4_SPREAD
+		self.point_value = 100
 	
 	def update(self, dt):
 		super().update(dt)
@@ -704,6 +738,7 @@ class Boss(pyglet.sprite.Sprite):
 		self.update_stage = [self.update_s0, self.update_s1, self.update_s2, self.update_s3, self.update_s4]
 		self.weapons = [0]
 		self.dead = False
+		self.active = []
 
 		# Mini flyers
 		self.minion_l = BossMinion(self, True)
@@ -749,7 +784,7 @@ class Boss(pyglet.sprite.Sprite):
 		# Sun burster
 		weapon_a = Spawner(self, math.radians(270), 0.15, ENEMY_BULLET_SPEED, 72)
 		Θ = math.radians(20)
-		weapon_a.angle_func = lambda t, b: t * .3 + b * Θ
+		weapon_a.angle_func = lambda t, b: t * .15 + b * Θ
 		weapon_a.speed_func = lambda t, b: (b+1) // 18 * 12
 		weapons_s2.append([weapon_a])
 
@@ -874,11 +909,13 @@ class Boss(pyglet.sprite.Sprite):
 				self.weapon_timer = BOSS_WEAPON_BURST_S3
 
 	def update_s4(self, dt):
+		if self.dead: return
 		self.weapon_timer -= dt
 		if self.weapon_timer <= 0 and not self.dead:
 			self.visible = False
 			self.dead = True
-			MISC_LIST.append(Explode(self.x, self.y))
+			MISC_LIST.append(ExplodeBig(self.x, self.y))
+			CENTER_LABEL.text = "Youre winner"
 			return
 		self.move_timer -= dt
 		if self.move_timer <= 0:
@@ -889,8 +926,8 @@ class Boss(pyglet.sprite.Sprite):
 			self.y_speed = math.sin(Θ) * speed
 		self.x += self.x_speed * dt
 		self.y += self.y_speed * dt
-		self.x_speed *= 0.94
-		self.y_speed *= 0.94
+		self.x_speed *= 0.8
+		self.y_speed *= 0.8
 		MISC_LIST.append(
 			Explode(self.x - self.image.anchor_x + random.uniform(0, self.width),
 					self.y - self.image.anchor_y + random.uniform(0, self.height)))
@@ -998,6 +1035,17 @@ class Explode(pyglet.sprite.Sprite):
 		self.delete()
 		# self.visible = False
 
+class ExplodeBig(Explode):
+	"""Growing explosion"""
+	def __init__(self, x, y, image = explode64_anim):
+		super().__init__(x, y, image)
+
+	def update(self, dt):
+		self.scale += 0.33
+		super().update(dt)
+		
+		
+
 # Helpers for making enemy formations
 def triangle_formation(base, x, y, x_offset, y_offset, flip = False):
 	x_list = []
@@ -1020,19 +1068,33 @@ def rectangle_formation(width, height, x, y, x_offset, y_offset):
 	return x_list, y_list
 
 
-tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96)
-rect_3x5_x, rect_3x5_y = rectangle_formation(3, 5, SCREEN_WIDTH_HALF, 0, 64, 96)
+tri_4_x, tri_4_y = triangle_formation(4, SCREEN_WIDTH_HALF, 0, 64, 96, True)
+tri_8_x, tri_8_y = triangle_formation(8, SCREEN_WIDTH_HALF, 0, 48, 64)
+rect_3x5_x, rect_3x5_y = rectangle_formation(3, 5, SCREEN_WIDTH_HALF, 0, 96, 160)
+rect_3x3_x, rect_3x3_y = rectangle_formation(3, 3, SCREEN_WIDTH_HALF, 0, 96, 96)
+sideline_x, sideline_y = rectangle_formation(2, 8, SCREEN_WIDTH_HALF, 0, SCREEN_WIDTH - 128, 128)
 
 # Level 
 # WAVE_MOVE_TRI = EnemyPattern([Enemy], tri_4_x, tri_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
 # WAVE_MOVE_RECT = EnemyPattern([Enemy], rect_4_x, rect_4_y, [lambda t, y: 100*math.sin(y*0.02)], 1.0)
-# WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1)
+WAVE_SINGLE_ENEMY = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], 0.1)
 # WAVE_SINGLE_ENEMY2 = EnemyPattern([Enemy], [SCREEN_WIDTH_HALF], [0], [lambda t, y: 0], 0.1, BombUp)
 
+# ACTUAL LEVEL STUFF
 
-WAVE_1 = EnemyPattern([Enemy], rect_3x5_x, rect_3x5_y, 8)
+WAVE_1 = EnemyPattern([Enemy], rect_3x5_x, rect_3x5_y, 12)
+WAVE_2 = EnemyPattern([EnemyShoots, EnemyShoots, EnemyShoots, Enemy], rect_3x3_x, rect_3x3_y, 10, PowerUp)
+WAVE_3 = EnemyPattern([EnemyStops], [SCREEN_WIDTH_HALF - 100, SCREEN_WIDTH_HALF + 100], [0], 3, BombUp)
+WAVE_4 = EnemyPattern([Enemy], sideline_x, sideline_y, 12)
+WAVE_5 = EnemyPattern([EnemyWavey], sideline_x, sideline_y, 12, PowerUp)
+WAVE_6 = EnemyPattern([EnemyAims, EnemyShoots, EnemyShoots, EnemyAims, Enemy], tri_4_x, tri_4_y, 7)
+WAVE_7 = EnemyPattern([Enemy], tri_8_x, tri_8_y, 12, PowerUp)
+w8e = [EnemyAims] * 8
+w8e.extend([EnemyShoots] * 7)
+w8e.append(Enemy)
+WAVE_8 = EnemyPattern(w8e, tri_8_x, tri_8_y, 12, PowerUp)
 
-# WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4)
+# WAVE_AIM = EnemyPattern([EnemyAims] * 4, [SCREEN_WIDTH // 2] * 4, [0.8] * 4
 # WAVE_STOP = EnemyPattern([EnemyStops] * 2, [96, SCREEN_WIDTH - 96], [1.0, 0.0])
 # WAVE_1 = EnemyPattern([Enemy] * 8, [SCREEN_WIDTH - 64] * 8, [0.8] * 8)
 # WAVE_2 = EnemyPattern([Enemy] * 8, [64] * 8, [0.8] * 8)
@@ -1041,7 +1103,8 @@ WAVE_1 = EnemyPattern([Enemy], rect_3x5_x, rect_3x5_y, 8)
 # WAVE_DOUBLE = EnemyPattern([Enemy, EnemyShoots, EnemyShoots, Enemy] * 4, [SCREEN_WIDTH - 64, 64] * 8, [1.5, 0] * 8)
 
 # TEST_LEVEL = LevelPattern([WAVE_AIM, WAVE_STOP, WAVE_1, WAVE_STOP, WAVE_2, WAVE_3, WAVE_4, WAVE_DOUBLE])
-TEST_LEVEL = LevelPattern([WAVE_1], Boss)
+TEST_LEVEL = LevelPattern([WAVE_1, WAVE_2, WAVE_3, WAVE_1, WAVE_4, WAVE_5, WAVE_6, WAVE_7, WAVE_8, WAVE_1], Boss)
+# TEST_LEVEL = LevelPattern([WAVE_SINGLE_ENEMY], Boss)
 
 WINDOW = pyglet.window.Window(width = SCREEN_WIDTH, height = SCREEN_HEIGHT)
 PLAYER = Player()
@@ -1076,7 +1139,7 @@ def update_debug_label(dt):
 
 
 def update_score_label():
-	SCORE_LABEL.text = "Score: {}\nLives: {}\nBombs: {}".format(0, PLAYER.lives, PLAYER.bombs)
+	SCORE_LABEL.text = "Score: {}\nLives: {}\nBombs: {}".format(PLAYER_SCORE, PLAYER.lives, PLAYER.bombs)
 
 
 def player_collision_tick(dt):
@@ -1172,7 +1235,8 @@ def on_draw():
 	PLAYER.draw()
 	BATCH.draw()
 	update_score_label()
-	DEBUG_LABEL.draw()
+	if DEBUG_PRINTOUT:
+		DEBUG_LABEL.draw()
 	SCORE_LABEL.draw()
 
 # Set everything up

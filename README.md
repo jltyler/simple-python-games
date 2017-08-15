@@ -10,7 +10,7 @@ Z - shoot
 ## How to play
 Destroy the asteroids! Your score multiplier is dependent on your accuracy
 
-#Shmup
+# Shmup
 ## Controls
 Arrows - movement
 Z - shoot

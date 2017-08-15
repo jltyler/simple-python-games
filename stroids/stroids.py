@@ -25,6 +25,7 @@ SHOTS_HIT = 0
 
 BULLET_SPEED = 800.0
 BULLET_INHERIT = 1.0
+global BULLET_LIST
 BULLET_LIST = []
 
 ASTEROID_MAX_SPEED = 175.0
@@ -83,7 +84,7 @@ ASTEROID_RADIUS2[1] = ASTEROID_SMALL_RADIUS2
 
 # STEALING JOHN'S WORK AND NOT GIVING HIM CREDIT xDDDDD
 def sprite_sheet_anim(sprite_sheet, rows, columns, period=0.05, loop=True):
-	"""Pass it a sprite sheet, how many rows and columns the sheet has, a period for frames, 
+	"""Pass it a sprite sheet, how many rows and columns the sheet has, a period for frames,
 		and if the animation loops; returns a Sprite of the sheet animation if return_what is 1,
 		returns an animation image if return_what is 0."""
 	return pyglet.image.Animation.from_image_sequence(pyglet.image.ImageGrid(sprite_sheet, rows, columns), period, loop)
@@ -246,7 +247,7 @@ def spawn_asteroid(x = None, y = None, size=None):
 
 	ASTEROID_LIST.append(Asteroid(spawn_x, spawn_y, spawn_angle, spawn_speed, size))
 
-		
+
 
 class Bullet(pyglet.sprite.Sprite):
 	"""Bullet fired from ship. Travels in one direction at a constant speed"""
@@ -270,7 +271,7 @@ class Bullet(pyglet.sprite.Sprite):
 		if (self.x < -32 or self.x > SCREEN_WIDTH + 32 or
 			self.y < -32 or self.y > SCREEN_HEIGHT + 32):
 			self.garbage = True
-		
+
 
 # Player controlled ship that moves around
 class Ship(pyglet.sprite.Sprite):
@@ -428,7 +429,7 @@ def game_setup():
 
 # Main loop
 def game_update(dt):
-	global SPAWN_TIMER
+	global SPAWN_TIMER, BULLET_LIST, ASTEROID_LIST
 	PLAYER.update(dt)
 	i = 0
 	# update bullets
@@ -458,7 +459,7 @@ def game_update(dt):
 
 	# Check for player death
 	if PLAYER.dead:
-		global RESPAWN_TIMER, BULLET_LIST, ASTEROID_LIST, SCORE, ACCURACY, SHOTS_FIRED, SHOTS_HIT
+		global RESPAWN_TIMER, SCORE, ACCURACY, SHOTS_FIRED, SHOTS_HIT
 		# PLAYER.visible = False
 		RESPAWN_TIMER -= dt
 		RESPAWN_LABEL.text = 'YOU LOSE MANG!\nSCORE: {}'.format(SCORE)
@@ -478,7 +479,7 @@ def game_update(dt):
 			RESPAWN_LABEL.text = ''
 
 
-	
+
 	if SPAWN_TIMER <= 0:
 		SPAWN_TIMER = random.uniform(SPAWN_WAIT_MIN, SPAWN_WAIT_MAX)
 		if len(ASTEROID_LIST) < MAX_ASTEROIDS:
